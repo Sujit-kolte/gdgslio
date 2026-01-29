@@ -12,7 +12,9 @@ import Session from "./models/session.model.js";
 import Participant from "./models/participant.model.js";
 
 // 2. IMPORT ROUTES (Make sure these files exist!)
-import authRoutes from "./routes/auth.routes.js";
+
+import adminRoutes from "./routes/admin.routes.js";
+
 import participantRoutes from "./routes/participant.routes.js";
 import sessionRoutes from "./routes/session.routes.js"; // Needed for Admin
 import questionRoutes from "./routes/question.routes.js"; // Needed for Admin
@@ -43,7 +45,7 @@ app.get("/", (req, res) => {
 
 /* ================= ROUTES (THE FIX) ================= */
 // 🚨 THESE WERE COMMENTED OUT - I ENABLED THEM
-app.use("/api/admin", authRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api/participants", participantRoutes); // <--- This fixes the 404 for Users!
 app.use("/api/sessions", sessionRoutes); // <--- This keeps Admin working
 app.use("/api/questions", questionRoutes); // <--- This keeps Questions working
