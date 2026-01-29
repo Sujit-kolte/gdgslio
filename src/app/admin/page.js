@@ -4,9 +4,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 // 🟢 CONFIGURATION
-// Use 'http://localhost:4000/api' for local development
-// Use 'https://gdg-quiz-app.onrender.com/api' for cloud
+// ✅ Make sure this URL matches your live Render Backend
 const API_URL = "https://gdgslio.onrender.com/api";
+// OR keep "https://gdgslio.onrender.com/api" if you didn't create a v2.
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -26,11 +26,12 @@ export default function AdminLogin() {
     setStatus({ msg: "Verifying credentials...", type: "loading" });
 
     try {
-      const response = await fetch(`${API_URL}/admin/login`, {
+      // 🟢 FIX: Changed URL from '/admin/login' to '/admin/verify-passcode'
+      const response = await fetch(`${API_URL}/admin/verify-passcode`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "admin-passcode": passcode.trim(),
+          "admin-passcode": passcode.trim(), // Sending header correctly
         },
       });
 
@@ -53,7 +54,7 @@ export default function AdminLogin() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 font-sans relative overflow-hidden">
-      {/* Background Grid Pattern (Matching your CSS) */}
+      {/* Background Grid Pattern */}
       <div
         className="absolute inset-0 z-0 opacity-40 pointer-events-none"
         style={{
@@ -103,7 +104,11 @@ export default function AdminLogin() {
         {/* Status Message */}
         {status.msg && (
           <div
-            className={`mt-4 text-sm text-center font-medium ${status.type === "error" ? "text-red-500" : "text-gray-500 animate-pulse"}`}>
+            className={`mt-4 text-sm text-center font-medium ${
+              status.type === "error"
+                ? "text-red-500"
+                : "text-gray-500 animate-pulse"
+            }`}>
             {status.msg}
           </div>
         )}

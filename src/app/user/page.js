@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 // 🟢 CONFIGURATION
-// ✅ Using your Cloud Backend
+// Make sure this matches your deployed backend URL exactly
 const API_URL = "https://gdgslio.onrender.com/api";
 
 function UserJoinContent() {
@@ -16,7 +16,7 @@ function UserJoinContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Auto-fill code from URL if present (e.g. ?code=JS101)
+  // Auto-fill code from URL if present
   useEffect(() => {
     const urlCode = searchParams.get("code");
     if (urlCode) {
@@ -36,44 +36,38 @@ function UserJoinContent() {
     }
 
     try {
-      // 🚀 REQUEST: Sending exactly what your backend controller expects
       const res = await fetch(`${API_URL}/participants/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
           sessionCode: code.trim().toUpperCase(),
-          // Note: We do NOT send uniqueCode anymore, the backend generates it!
         }),
       });
 
-      // 🔍 Check for HTML responses (404/500 errors from server crashes)
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
-        const text = await res.text();
-        console.error("Server Error (HTML):", text);
         if (res.status === 404)
-          throw new Error("Session not found or Backend URL is wrong.");
-        throw new Error(`Server returned ${res.status}. Check console.`);
+          throw new Error("Session not found. Check code or URL.");
+        throw new Error(`Server Error: ${res.status}`);
       }
 
       const data = await res.json();
 
       if (data.success) {
-        // ✅ SUCCESS: Save details for the game session
+        // ✅ SUCCESS: Save details
         sessionStorage.setItem("SESSION_CODE", code.trim().toUpperCase());
         sessionStorage.setItem("PARTICIPANT_ID", data.data.participantId);
         sessionStorage.setItem("PLAYER_NAME", data.data.name);
 
-        // Redirect to game area
-        router.push("/play");
+        // 🔄 REDIRECT TO LOBBY (Wait for host)
+        router.push("/play/lobby");
       } else {
-        // ❌ LOGIC ERROR: (e.g. "Session Closed", "Name Invalid")
         setError(data.message || "Failed to join session.");
       }
     } catch (err) {
       console.error("Join Error:", err);
-      setError(err.message || "Network Error. Could not connect to server.");
+      setError(err.message || "Could not connect to server.");
     } finally {
       setLoading(false);
     }
@@ -81,7 +75,6 @@ function UserJoinContent() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 font-sans p-4 relative overflow-hidden">
-      {/* Background Decor (Optional) */}
       <div
         className="absolute inset-0 z-0 opacity-30 pointer-events-none"
         style={{
@@ -140,15 +133,8 @@ function UserJoinContent() {
           <button
             disabled={loading}
             type="submit"
-            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none">
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                Joining...
-              </span>
-            ) : (
-              "Enter Room"
-            )}
+            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed">
+            {loading ? "Joining..." : "Enter Room"}
           </button>
         </form>
 
@@ -160,7 +146,6 @@ function UserJoinContent() {
           </Link>
         </div>
       </div>
-
       <style jsx global>{`
         @keyframes fadeUp {
           from {
