@@ -6,7 +6,8 @@ import {
   getSessionByCode,
   updateSessionStatus,
   resetSessionData, // 🟢 Imported
-  deleteSession, // 🟢 Imported
+  deleteSession,
+  startGame, // 🟢 Imported
 } from "../controllers/session.controller.js";
 import { deleteSessionPermanently } from "../controllers/session.controller.js";
 
