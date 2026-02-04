@@ -5,6 +5,7 @@ import { getSocket } from "@/lib/socket";
 import confetti from "canvas-confetti";
 
 // 🟢 CONFIGURATION
+// Ensure this matches your live backend URL
 const API_URL = "https://gdgslio.onrender.com/api";
 
 export default function GamePlay() {
@@ -24,7 +25,7 @@ export default function GamePlay() {
   const [winners, setWinners] = useState([]);
   const [history, setHistory] = useState([]);
 
-  // Stats Calculation for Game Over
+  // Stats for Game Over
   const [stats, setStats] = useState({ correct: 0, incorrect: 0, timeout: 0 });
 
   const timerRef = useRef(null);
@@ -41,11 +42,15 @@ export default function GamePlay() {
     }
 
     setPlayer((prev) => ({ ...prev, name: name || "Player" }));
+
+    // Default to Lobby until server sends state
     setView("LOBBY");
 
+    // 1. Join & Sync
     socket.emit("join:session", code);
-    socket.emit("sync:state", code);
+    socket.emit("sync:state", code); // <--- Vital for fixing the blank screen issue
 
+    // 2. Listeners
     socket.on("game:question", handleNewQuestion);
     socket.on("game:result", handleResult);
     socket.on("game:ranks", handleRanks);
@@ -68,8 +73,11 @@ export default function GamePlay() {
     setQuestion(data);
     setSelectedOption(null);
     setResult(null);
-    setTotalTime(data.time || 15);
-    setTimeLeft(data.time || 15);
+
+    // Reset Timer
+    const duration = data.time || 15;
+    setTotalTime(duration);
+    setTimeLeft(duration);
 
     clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
@@ -84,8 +92,13 @@ export default function GamePlay() {
   };
 
   const handleResult = (data) => {
+    // 🛑 STOP TIMER IMMEDIATELY
+    clearInterval(timerRef.current);
+
     setView("RESULT");
     setResult(data);
+
+    // Celebration if correct
     if (data.correctAnswer === selectedOption) {
       triggerConfetti();
     }
@@ -100,17 +113,18 @@ export default function GamePlay() {
   };
 
   const handleGameOver = async (data) => {
+    clearInterval(timerRef.current);
     setView("GAMEOVER");
     if (data.winners) setWinners(data.winners);
-    triggerConfetti(true);
+    triggerConfetti(true); // Big confetti
 
+    // Fetch History for Stats
     try {
       const pId = sessionStorage.getItem("PARTICIPANT_ID");
       const res = await fetch(`${API_URL}/participants/history/${pId}`);
       const json = await res.json();
       if (json.success) {
         setHistory(json.data);
-        // Calculate Stats
         const correct = json.data.filter((h) => h.status === "CORRECT").length;
         const incorrect = json.data.filter(
           (h) => h.status === "INCORRECT",
@@ -125,16 +139,19 @@ export default function GamePlay() {
   };
 
   const submitAnswer = async (text) => {
-    if (selectedOption) return;
+    if (selectedOption) return; // Prevent double submit
     setSelectedOption(text);
 
     const pId = sessionStorage.getItem("PARTICIPANT_ID");
+    const code = sessionStorage.getItem("SESSION_CODE");
+
     try {
       await fetch(`${API_URL}/participants/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           participantId: pId,
+          sessionCode: code,
           questionId: question.question._id,
           selectedOption: text,
           timeLeft: timeLeft,
@@ -153,8 +170,7 @@ export default function GamePlay() {
     }
   };
 
-  // --- UI HELPERS ---
-  // Timer Calculation
+  // --- UI CALCS ---
   const radius = 45;
   const circumference = 2 * Math.PI * radius; // ~282.7
   const strokeDashoffset =
@@ -175,7 +191,7 @@ export default function GamePlay() {
     <div className="main-body">
       <div className="container">
         <div className="quiz-card">
-          {/* === LOBBY VIEW === */}
+          {/* === 1. LOBBY / WAITING FOR NEXT Q === */}
           {view === "LOBBY" && (
             <div className="start-screen">
               <h1>🎯 GDG SKNCOE Quiz</h1>
@@ -207,7 +223,7 @@ export default function GamePlay() {
             </div>
           )}
 
-          {/* === QUESTION VIEW === */}
+          {/* === 2. QUESTION VIEW === */}
           {view === "QUESTION" && question && (
             <div id="quizScreen">
               {/* Header / Progress */}
@@ -326,7 +342,7 @@ export default function GamePlay() {
             </div>
           )}
 
-          {/* === RESULT VIEW (Interstitial) === */}
+          {/* === 3. RESULT VIEW === */}
           {view === "RESULT" && result && (
             <div className="results-container">
               <div className="trophy-container" style={{ fontSize: "4em" }}>
@@ -365,7 +381,7 @@ export default function GamePlay() {
             </div>
           )}
 
-          {/* === GAMEOVER VIEW === */}
+          {/* === 4. GAMEOVER VIEW === */}
           {view === "GAMEOVER" && (
             <div className="results-container">
               <div className="trophy-container">🏆</div>
@@ -378,21 +394,13 @@ export default function GamePlay() {
 
               <div className="stats-grid">
                 <div className="stat-card">
-                  <div className="stat-value" id="correctAnswers">
-                    {stats.correct}
-                  </div>
+                  <div className="stat-value">{stats.correct}</div>
                   <div className="stat-label">Correct</div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-value" id="incorrectAnswers">
-                    {stats.incorrect}
-                  </div>
+                  <div className="stat-value">{stats.incorrect}</div>
                   <div className="stat-label">Incorrect</div>
                 </div>
-                {/* <div className="stat-card">
-                        <div className="stat-value" id="timeoutAnswers">{stats.timeout}</div>
-                        <div className="stat-label">Timeouts</div>
-                    </div> */}
               </div>
 
               <button className="restart-btn" onClick={() => router.push("/")}>
@@ -408,7 +416,6 @@ export default function GamePlay() {
         * {
           box-sizing: border-box;
         }
-
         .main-body {
           font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
           background: linear-gradient(135deg, #fbfbfc 0%, #7fbad1 80%);
@@ -430,12 +437,10 @@ export default function GamePlay() {
             );
           background-size: 40px 40px;
         }
-
         .container {
           max-width: 800px;
           width: 100%;
         }
-
         .quiz-card {
           background: white;
           border-radius: 20px;
@@ -446,8 +451,6 @@ export default function GamePlay() {
           overflow: hidden;
           min-height: 500px;
         }
-
-        /* Start Screen */
         .start-screen {
           text-align: center;
           animation: fadeIn 1s ease forwards;
@@ -463,7 +466,6 @@ export default function GamePlay() {
           color: #666;
           margin-bottom: 20px;
         }
-
         .quiz-rules {
           background: #f8f9fa;
           padding: 20px;
@@ -492,7 +494,7 @@ export default function GamePlay() {
           margin-right: 8px;
         }
 
-        /* Timer Circle */
+        /* Timer */
         .timer-circle-container {
           position: relative;
           width: 80px;
@@ -526,7 +528,6 @@ export default function GamePlay() {
           stroke: url(#dangerGradient);
           animation: timerPulse 0.3s ease infinite;
         }
-
         @keyframes timerPulse {
           0%,
           100% {
@@ -536,7 +537,6 @@ export default function GamePlay() {
             filter: drop-shadow(0 3px 15px rgba(235, 51, 73, 0.6));
           }
         }
-
         .timer-text {
           position: absolute;
           top: 50%;
@@ -551,7 +551,7 @@ export default function GamePlay() {
           line-height: 1;
         }
 
-        /* Progress Bar */
+        /* Progress */
         .progress-container {
           margin-bottom: 30px;
         }
@@ -574,7 +574,6 @@ export default function GamePlay() {
           border-radius: 10px;
           transition: width 0.5s ease;
         }
-
         .question-counter {
           background: linear-gradient(135deg, #f0ada7 0%, #ea4335 100%);
           color: white;
@@ -590,7 +589,7 @@ export default function GamePlay() {
           border-radius: 20px;
         }
 
-        /* Question & Answer */
+        /* Question */
         .question-container {
           animation: slideIn 0.6s ease forwards;
         }
@@ -601,14 +600,12 @@ export default function GamePlay() {
           font-weight: 600;
           text-align: center;
         }
-
         .answers-grid-kbc {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 20px;
           margin-bottom: 20px;
         }
-
         .answer-btn {
           padding: 25px 30px;
           border: 3px solid #667eea;
@@ -670,7 +667,6 @@ export default function GamePlay() {
           color: #666;
           margin-bottom: 30px;
         }
-
         .stats-grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -693,23 +689,12 @@ export default function GamePlay() {
           color: #666;
           font-size: 0.9em;
         }
-
         .trophy-container {
           font-size: 5em;
           margin: 10px 0;
           text-align: center;
           animation: trophyBounce 2s ease-in-out infinite;
         }
-        @keyframes trophyBounce {
-          0%,
-          100% {
-            transform: translateY(0) scale(1);
-          }
-          50% {
-            transform: translateY(-15px) scale(1.1);
-          }
-        }
-
         .restart-btn {
           padding: 15px 40px;
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -737,8 +722,15 @@ export default function GamePlay() {
             transform: translateX(0);
           }
         }
-
-        /* Responsive */
+        @keyframes trophyBounce {
+          0%,
+          100% {
+            transform: translateY(0) scale(1);
+          }
+          50% {
+            transform: translateY(-15px) scale(1.1);
+          }
+        }
         @media (max-width: 768px) {
           .quiz-card {
             padding: 25px;

@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getSocket } from "@/lib/socket";
+import Footer from "@/components/Footer";
 
 // --- CONFIGURATION ---
 const CONFIG = {
@@ -18,29 +19,6 @@ const CONFIG = {
   messageDelay: 400,
 };
 
-const avatarEmojis = [
-  "👨",
-  "👩",
-  "🧑",
-  "👴",
-  "👵",
-  "👦",
-  "👧",
-  "🧔",
-  "👱",
-  "👨‍💼",
-  "👩‍💼",
-  "👨‍🎓",
-  "👩‍🎓",
-  "👨‍🔬",
-  "👩‍🔬",
-  "👨‍💻",
-  "👩‍💻",
-  "👨‍🎨",
-  "👩‍🎨",
-  "🧑‍🚀",
-];
-
 export default function LobbyPage() {
   const router = useRouter();
   const socket = getSocket();
@@ -49,9 +27,23 @@ export default function LobbyPage() {
   const [terminalLines, setTerminalLines] = useState([]);
   const [participants, setParticipants] = useState([]);
   const [myPlayer, setMyPlayer] = useState({ name: "Player" });
+
+  // 🟢 Fix Hydration: Start empty, set on client only
   const [currentTime, setCurrentTime] = useState("");
 
   const terminalRef = useRef(null);
+
+  // Helper to format date
+  const getFormattedDate = () => {
+    return new Date().toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
   // --- 1. SETUP & SOCKETS ---
   useEffect(() => {
@@ -67,6 +59,9 @@ export default function LobbyPage() {
 
     setMyPlayer({ name });
 
+    // Set initial time (Client side only)
+    setCurrentTime(getFormattedDate());
+
     // Join the socket room
     socket.emit("join:session", code);
 
@@ -76,40 +71,22 @@ export default function LobbyPage() {
       router.push("/play");
     });
 
-    // Clock
-    const timeInterval = setInterval(() => {
-      const now = new Date();
-      setCurrentTime(
-        now.toLocaleDateString("en-US", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      );
-    }, 60000);
-    setCurrentTime(
-      new Date().toLocaleDateString("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    );
+    // 🟢 LISTEN FOR REAL PARTICIPANTS (You need to implement this event in Backend)
+    // Assuming backend sends an array of users when someone joins
+    socket.on("session:update", (updatedParticipantList) => {
+      console.log("Participants updated:", updatedParticipantList);
+      setParticipants(updatedParticipantList);
+    });
 
-    // Simulate "Lobby Activity" (Fake users joining for visual effect)
-    const fakeJoinInterval = setInterval(() => {
-      if (Math.random() > 0.6) addRandomParticipant();
-    }, 4000);
+    // Clock Interval
+    const timeInterval = setInterval(() => {
+      setCurrentTime(getFormattedDate());
+    }, 60000);
 
     return () => {
       socket.off("game:started");
+      socket.off("session:update"); // Cleanup listener
       clearInterval(timeInterval);
-      clearInterval(fakeJoinInterval);
     };
   }, []);
 
@@ -156,32 +133,21 @@ export default function LobbyPage() {
     if (view === "WELCOME") {
       const timer = setTimeout(() => {
         setView("LOBBY");
-        // Add self to list
-        setParticipants([
-          {
-            id: "me",
-            name: sessionStorage.getItem("PLAYER_NAME") || "Me",
-            emoji: "😎",
-          },
-        ]);
+        // Ensure "Me" is visible initially if socket hasn't updated yet
+        setParticipants((prev) => {
+          if (prev.length > 0) return prev; // If socket already loaded data, don't overwrite
+          return [
+            {
+              id: "me",
+              name: sessionStorage.getItem("PLAYER_NAME"),
+              emoji: "😎",
+            },
+          ];
+        });
       }, 2500);
       return () => clearTimeout(timer);
     }
   }, [view]);
-
-  const addRandomParticipant = () => {
-    setParticipants((prev) => {
-      if (prev.length > 20) return prev;
-      return [
-        ...prev,
-        {
-          id: Date.now(),
-          name: "Guest " + Math.floor(Math.random() * 99),
-          emoji: avatarEmojis[Math.floor(Math.random() * avatarEmojis.length)],
-        },
-      ];
-    });
-  };
 
   // --- RENDER ---
   return (
@@ -260,15 +226,21 @@ export default function LobbyPage() {
                 </div>
               </div>
               <div className="participants-display">
-                {participants.map((p, i) => (
-                  <div
-                    key={p.id}
-                    className="participant-avatar"
-                    data-name={p.name}
-                    style={{ animationDelay: `${i * 0.1}s` }}>
-                    {p.emoji}
-                  </div>
-                ))}
+                {participants.length === 0 ? (
+                  <p className="text-gray-400 text-sm">
+                    Waiting for players...
+                  </p>
+                ) : (
+                  participants.map((p, i) => (
+                    <div
+                      key={p.id || i}
+                      className="participant-avatar"
+                      title={p.name} // Show name on hover
+                      style={{ animationDelay: `${i * 0.1}s` }}>
+                      {p.emoji || "👤"} {/* Fallback emoji */}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -279,13 +251,14 @@ export default function LobbyPage() {
         </div>
       </section>
 
-      {/* STYLES */}
+      {/* STYLES (Kept exactly as you had them) */}
       <style jsx global>{`
         :root {
           --primary: #2563eb;
           --bg: #f3f4f6;
           --term-bg: #1e1e1e;
         }
+        /* ... REST OF YOUR CSS ... */
         .lobby-body {
           margin: 0;
           padding: 0;

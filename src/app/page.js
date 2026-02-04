@@ -4,12 +4,12 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 
+import Footer from "@/components/Footer";
+
 export default function Home() {
   const router = useRouter();
-
-  // --- STATE ---
   const [theme, setTheme] = useState("light");
-  const [quizStep, setQuizStep] = useState(0); // 0:Idle, 1:Select, 2:Reveal, 3:Score, 4:Celeb
+  const [quizStep, setQuizStep] = useState(0);
 
   // --- 1. THEME LOGIC ---
   useEffect(() => {
@@ -25,54 +25,54 @@ export default function Home() {
     document.documentElement.setAttribute("data-theme", newTheme);
   };
 
-  // --- 2. QUIZ ANIMATION LOOP ---
+  // --- 2. ANIMATION LOOPS ---
   useEffect(() => {
     const runCycle = () => {
-      setQuizStep(0); // Reset
-      setTimeout(() => setQuizStep(1), 800); // Select A
-      setTimeout(() => setQuizStep(2), 1800); // Reveal Correct
-      setTimeout(() => setQuizStep(3), 2300); // Show Score
-      setTimeout(() => setQuizStep(4), 2800); // Confetti
+      setQuizStep(0);
+      setTimeout(() => setQuizStep(1), 800);
+      setTimeout(() => setQuizStep(2), 1800);
+      setTimeout(() => setQuizStep(3), 2300);
+      setTimeout(() => setQuizStep(4), 2800);
     };
-
     runCycle();
     const interval = setInterval(runCycle, 5000);
     return () => clearInterval(interval);
   }, []);
 
-  // --- 3. TIMELINE ANIMATION ---
+  // --- 3. TIMELINE OBSERVER ---
   const timelineRef = useRef(null);
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting) {
+          if (entry.isIntersecting)
             entry.target.classList.add("animate-timeline");
-          }
         });
       },
       { threshold: 0.2 },
     );
-
     if (timelineRef.current) observer.observe(timelineRef.current);
     return () => observer.disconnect();
   }, []);
 
   return (
     <div className="min-h-screen flex flex-col font-sans transition-colors duration-300 page-container">
-      {/* NAVBAR */}
+      {/* === NAVBAR === */}
       <nav className="fixed top-0 w-full bg-white/80 backdrop-blur-md shadow-sm z-50 transition-all duration-300 dark:bg-gray-900/80 dark:border-b dark:border-gray-800">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="relative w-8 h-8">
+          {/* ✅ UPDATED LOGO SECTION */}
+          <div className="flex items-center gap-3 logo">
+            <Link href="/">
               <Image
-                src="/assets/logo.png"
+                src="/assests/logo.png"
                 alt="GDG Logo"
-                fill
-                className="object-contain"
+                width={0} // 👈 Allows CSS to control size
+                height={0} // 👈 Allows CSS to control size
+                sizes="100vw"
+                className="w-auto" // Tailwind fallback
                 priority
               />
-            </div>
+            </Link>
             <span className="font-bold text-xl text-gray-800 tracking-tight dark:text-white">
               GDG SKNCOE
             </span>
@@ -85,7 +85,6 @@ export default function Home() {
               Admin Portal
             </Link>
 
-            {/* Theme Toggle */}
             <button
               onClick={toggleTheme}
               className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 transition-all">
@@ -121,10 +120,9 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* HERO SECTION */}
+      {/* === HERO SECTION === */}
       <main className="flex-1">
         <section className="pt-32 pb-20 px-6 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-          {/* Left Content */}
           <div className="text-center lg:text-left z-10">
             <h1 className="text-5xl md:text-7xl font-extrabold text-gray-900 mb-6 leading-tight dark:text-white">
               <span className="text-blue-600 inline-block hover:-translate-y-1 transition-transform">
@@ -137,7 +135,6 @@ export default function Home() {
                 Compete.
               </span>
             </h1>
-
             <p className="text-lg text-gray-600 mb-8 leading-relaxed dark:text-gray-300">
               Participate in <strong>quizzes</strong> and exciting
               mini-competitions.
@@ -145,7 +142,6 @@ export default function Home() {
               Test your knowledge, engage with peers, and make the experience
               unforgettable.
             </p>
-
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
               <button
                 onClick={() => router.push("/user")}
@@ -158,16 +154,13 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Right Content: Phone Mockup */}
           <div className="relative flex justify-center perspective-1000">
-            {/* Background Blobs */}
             <div className="absolute top-10 right-10 w-64 h-64 bg-purple-300 rounded-full mix-blend-multiply filter blur-2xl opacity-30 animate-blob"></div>
             <div className="absolute -bottom-10 left-10 w-64 h-64 bg-yellow-300 rounded-full mix-blend-multiply filter blur-2xl opacity-30 animate-blob animation-delay-2000"></div>
 
             <div className="phone-mockup">
               <div className="phone-notch"></div>
               <div className="phone-screen">
-                {/* Quiz Header */}
                 <div className="p-4 bg-blue-50 border-b border-blue-100">
                   <div className="text-xs font-bold text-blue-400 uppercase tracking-wider">
                     Question 1 of 5
@@ -179,8 +172,6 @@ export default function Home() {
                     🎯 Score: 100
                   </div>
                 </div>
-
-                {/* Quiz Options */}
                 <div className="p-4 space-y-2">
                   <div
                     className={`quiz-option ${quizStep >= 1 ? "selected" : ""} ${quizStep >= 2 ? "correct" : ""}`}>
@@ -195,8 +186,6 @@ export default function Home() {
                     <span className="font-bold mr-2">C.</span> Game Dev Group
                   </div>
                 </div>
-
-                {/* Celebration Overlay */}
                 <div
                   className={`celebration-overlay ${quizStep === 4 ? "active" : ""}`}>
                   <div className="text-6xl animate-bounce">🏆</div>
@@ -223,7 +212,6 @@ export default function Home() {
           </div>
         </section>
 
-        {/* TIMELINE SECTION */}
         <section
           className="py-20 bg-white dark:bg-gray-900 transition-colors"
           ref={timelineRef}>
@@ -234,12 +222,8 @@ export default function Home() {
               </h2>
               <p className="text-gray-500 mt-2">Simple steps to join the fun</p>
             </div>
-
             <div className="relative">
-              {/* Line */}
               <div className="absolute left-1/2 transform -translate-x-1/2 w-1 h-full bg-gray-100 dark:bg-gray-800 rounded-full"></div>
-
-              {/* Steps */}
               {[
                 {
                   id: "01",
@@ -280,7 +264,6 @@ export default function Home() {
                 </div>
               ))}
             </div>
-
             <div className="text-center mt-16">
               <button
                 onClick={() => router.push("/user")}
@@ -292,32 +275,22 @@ export default function Home() {
         </section>
       </main>
 
-      {/* FOOTER */}
-      <footer className="py-10 bg-gray-50 border-t border-gray-200 text-center dark:bg-gray-950 dark:border-gray-800">
-        <div className="flex justify-center items-center gap-2 mb-4">
-          <Image src="/assets/logo.png" width={24} height={24} alt="Logo" />
-          <span className="font-bold text-gray-700 dark:text-gray-300">
-            GDG On Campus
-          </span>
-        </div>
-        <p className="text-gray-500 text-sm">
-          Smt. Kashibai Navale College of Engineering, Pune
-        </p>
-        <div className="flex justify-center gap-6 mt-6 text-gray-400">
-          <a href="#" className="hover:text-blue-600">
-            <i className="fab fa-instagram"></i>
-          </a>
-          <a href="#" className="hover:text-blue-600">
-            <i className="fab fa-linkedin"></i>
-          </a>
-          <a href="#" className="hover:text-blue-600">
-            <i className="fab fa-github"></i>
-          </a>
-        </div>
-      </footer>
+      <Footer />
 
       <style jsx global>{`
-        /* Global & Dark Mode Backgrounds */
+        /* ✅ YOUR CUSTOM LOGO CSS */
+        .logo img {
+          height: 50px !important; /* Force override Next.js defaults */
+          width: auto !important;
+          display: block;
+          object-fit: contain;
+          transition: transform 0.3s ease;
+        }
+        .logo img:hover {
+          transform: scale(1.05); /* Optional: add hover effect */
+        }
+
+        /* --- EXISTING STYLES --- */
         .page-container {
           background-image:
             linear-gradient(
@@ -346,8 +319,6 @@ export default function Home() {
               transparent 1px
             );
         }
-
-        /* Phone Mockup */
         .phone-mockup {
           width: 280px;
           height: 520px;
@@ -375,8 +346,6 @@ export default function Home() {
           border-bottom-right-radius: 12px;
           z-index: 20;
         }
-
-        /* Quiz Items */
         .quiz-option {
           padding: 12px;
           border-radius: 12px;
@@ -396,7 +365,6 @@ export default function Home() {
           border-color: #10b981;
           color: #065f46;
         }
-
         .score-badge {
           display: inline-block;
           margin-top: 8px;
@@ -414,8 +382,6 @@ export default function Home() {
           opacity: 1;
           transform: scale(1);
         }
-
-        /* Celebration */
         .celebration-overlay {
           position: absolute;
           inset: 0;
@@ -443,8 +409,6 @@ export default function Home() {
             transform: translateY(550px) rotate(720deg);
           }
         }
-
-        /* Timeline Items */
         .timeline-item {
           display: flex;
           align-items: center;
@@ -471,7 +435,6 @@ export default function Home() {
         .animate-timeline .timeline-item:nth-child(4) {
           transition-delay: 0.7s;
         }
-
         .timeline-content {
           width: 45%;
           background: white;
@@ -485,7 +448,6 @@ export default function Home() {
           background: #1f2937;
           border-color: #374151;
         }
-
         .timeline-dot {
           width: 16px;
           height: 16px;
@@ -501,14 +463,12 @@ export default function Home() {
         [data-theme="dark"] .timeline-dot {
           border-color: #0f172a;
         }
-
         .timeline-item.left {
           flex-direction: row;
         }
         .timeline-item.right {
           flex-direction: row-reverse;
         }
-
         .timeline-item.left .timeline-content {
           text-align: right;
           margin-right: auto;
@@ -517,8 +477,6 @@ export default function Home() {
           text-align: left;
           margin-left: auto;
         }
-
-        /* Mobile Adjustments */
         @media (max-width: 768px) {
           .timeline-item,
           .timeline-item.right {
@@ -538,8 +496,6 @@ export default function Home() {
             left: 8px;
           }
         }
-
-        /* Animations */
         @keyframes blob {
           0% {
             transform: translate(0px, 0px) scale(1);

@@ -6,7 +6,7 @@ import {
   getSessionByCode,
   updateSessionStatus,
   resetSessionData, // 🟢 Imported
-  deleteSession     // 🟢 Imported
+  deleteSession, // 🟢 Imported
 } from "../controllers/session.controller.js";
 import { deleteSessionPermanently } from "../controllers/session.controller.js";
 
@@ -14,7 +14,8 @@ const router = Router();
 
 // Create a new session
 router.post("/", adminAuth, createSession);
-
+// 🟢 2. ADD THIS ROUTE (This triggers the "Game Started" signal)
+router.post("/start", adminAuth, startGame);
 // Get all sessions (Admin Dashboard)
 router.get("/", getAllSessions);
 
@@ -33,9 +34,7 @@ router.delete("/:sessionId/data", adminAuth, resetSessionData);
 router.delete(
   "/code/:sessionCode/permanent",
   adminAuth,
-  deleteSessionPermanently
+  deleteSessionPermanently,
 );
-
-
 
 export default router;
