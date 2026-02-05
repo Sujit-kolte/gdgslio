@@ -23,6 +23,9 @@ export default function GamePlay() {
   const [result, setResult] = useState(null);
   const [winners, setWinners] = useState([]);
 
+  // 🟢 NEW: Leaderboard State for mid-game updates
+  const [leaderboard, setLeaderboard] = useState([]);
+
   // Stats
   const [stats, setStats] = useState({ correct: 0, incorrect: 0, timeout: 0 });
 
@@ -42,16 +45,29 @@ export default function GamePlay() {
     setPlayer((prev) => ({ ...prev, name: name || "Player" }));
     setView("LOBBY");
 
-    // 1. Join & Sync
+    // 1. Join & Sync (Run this immediately)
     socket.emit("join:session", code);
     socket.emit("sync:state", code);
 
-    // 2. Listeners
+    // 🟢 2. LISTENERS
     socket.on("game:question", handleNewQuestion);
     socket.on("game:result", handleResult);
     socket.on("game:ranks", handleRanks);
     socket.on("game:over", handleGameOver);
     socket.on("sync:idle", () => setView("LOBBY"));
+
+    // 🟢 3. FORCE STOP LISTENER (Navigate to Landing Page)
+    socket.on("game:force_stop", () => {
+      alert("The host has ended the session.");
+      router.push("/");
+    });
+
+    // 🟢 4. RECONNECT LISTENER (Auto-Sync if screen sleeps)
+    socket.on("connect", () => {
+      console.log("♻️ Reconnected! Syncing...");
+      socket.emit("join:session", code);
+      socket.emit("sync:state", code);
+    });
 
     return () => {
       socket.off("game:question");
@@ -59,6 +75,8 @@ export default function GamePlay() {
       socket.off("game:ranks");
       socket.off("game:over");
       socket.off("sync:idle");
+      socket.off("game:force_stop");
+      socket.off("connect");
       clearInterval(timerRef.current);
     };
   }, []);
@@ -70,8 +88,11 @@ export default function GamePlay() {
     setSelectedOption(null);
     setResult(null);
 
-    // Reset Timer
-    const duration = data.time || 15;
+    // 🟢 FIX: Handle Late Join Time properly
+    // If joining late, data.time will be e.g. 8s.
+    // We keep totalTime 15s so the circle looks partially empty.
+    const duration = data.time !== undefined ? data.time : 15;
+
     setTotalTime(15);
     setTimeLeft(duration);
 
@@ -98,8 +119,13 @@ export default function GamePlay() {
   };
 
   const handleRanks = (rankList) => {
+    // 🟢 Save top 10 for display
+    setLeaderboard(rankList);
+
     const pId = sessionStorage.getItem("PARTICIPANT_ID");
     const me = rankList.find((p) => p.id === pId);
+
+    // Update my rank/score if I am in the top list
     if (me) {
       setPlayer((prev) => ({ ...prev, rank: me.rank, score: me.score }));
     }
@@ -169,14 +195,15 @@ export default function GamePlay() {
   // --- UI CALCS ---
   const radius = 45;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset =
-    circumference - (timeLeft / totalTime) * circumference;
+
+  // 🟢 Fix: Ensure we don't divide by zero or get negative dash
+  const progressRatio = totalTime > 0 ? timeLeft / totalTime : 0;
+  const strokeDashoffset = circumference - progressRatio * circumference;
 
   let timerClass = "timer-circle-progress";
   if (timeLeft <= 3) timerClass += " danger";
   else if (timeLeft <= 5) timerClass += " warning";
 
-  // 🟢 Fix Progress Bar Math
   const qNum = question?.qNum || 1;
   const qTotal = question?.total || 1;
   const progressPercent = (qNum / qTotal) * 100;
@@ -256,7 +283,7 @@ export default function GamePlay() {
                     </div>
                   </div>
                 </div>
-                {/* 🟢 Fix: Use calculated progressPercent */}
+
                 <div className="progress-bar">
                   <div
                     className="progress-fill"
@@ -288,7 +315,7 @@ export default function GamePlay() {
             </div>
           )}
 
-          {/* === 3. RESULT VIEW (🟢 Updated with Rank) === */}
+          {/* === 3. RESULT VIEW === */}
           {view === "RESULT" && result && (
             <div className="results-container">
               <div className="trophy-container" style={{ fontSize: "4em" }}>
@@ -316,8 +343,8 @@ export default function GamePlay() {
                 </strong>
               </div>
 
-              {/* 🟢 NEW: Rank & Score Display during Result */}
-              <div className="stats-row" style={{ marginBottom: "10px" }}>
+              {/* Rank & Score Stats */}
+              <div className="stats-row" style={{ marginBottom: "20px" }}>
                 <div
                   className="mini-stat"
                   style={{ background: "#e8f0fe", borderColor: "#4285F4" }}>
@@ -336,10 +363,41 @@ export default function GamePlay() {
                 </div>
               </div>
 
-              <p
-                style={{ marginTop: "20px", color: "#888", fontSize: "0.9em" }}>
-                Next question coming soon...
-              </p>
+              {/* 🟢 NEW: Scrollable Top 10 List during Break */}
+              <div className="leaderboard-card">
+                <div className="leaderboard-header">Top 10 Leaders</div>
+                <div className="leaderboard-list">
+                  {leaderboard.length > 0 ? (
+                    leaderboard.map((w, idx) => {
+                      let rankClass = "";
+                      if (idx === 0) rankClass = "gold";
+                      else if (idx === 1) rankClass = "silver";
+                      else if (idx === 2) rankClass = "bronze";
+
+                      const isMe = w.name === player.name;
+                      const itemStyle = isMe
+                        ? { border: "2px solid #4285F4", background: "#e8f0fe" }
+                        : {};
+
+                      return (
+                        <div
+                          key={idx}
+                          className={`leader-item ${rankClass}`}
+                          style={itemStyle}>
+                          <span>
+                            #{idx + 1} {w.name} {isMe ? "(You)" : ""}
+                          </span>
+                          <span className="pts">{w.score}</span>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="leader-item">
+                      <span>Loading ranks...</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -349,7 +407,7 @@ export default function GamePlay() {
               <div className="trophy-icon">🏆</div>
               <h2 className="complete-title">Quiz Complete!</h2>
 
-              {/* Leaderboard Card */}
+              {/* Final Leaderboard */}
               <div className="leaderboard-card">
                 <div className="leaderboard-header">Top Winners</div>
                 <div className="leaderboard-list">
@@ -491,8 +549,8 @@ export default function GamePlay() {
           width: 100%;
           height: 100%;
           display: flex;
-          alignitems: center;
-          justifycontent: center;
+          align-items: center;
+          justify-content: center;
         }
         .timer-number {
           font-size: 1.8em;
@@ -616,6 +674,16 @@ export default function GamePlay() {
           font-size: 0.9em;
           color: #333;
         }
+
+        /* 🟢 NEW: Scrollable List Logic */
+        .leaderboard-list {
+          max-height: 250px;
+          overflow-y: auto;
+          overflow-x: hidden;
+          scrollbar-width: thin;
+          scrollbar-color: #4285f4 #f1f1f1;
+        }
+
         .leader-item {
           display: flex;
           justify-content: space-between;

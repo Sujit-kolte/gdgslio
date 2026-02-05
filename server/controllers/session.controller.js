@@ -291,6 +291,7 @@ export const deleteSessionPermanently = async (req, res, next) => {
     if (!session)
       return res.status(404).json({ success: false, message: "Not found" });
 
+    // 🟢 TRIGGER CLIENT REDIRECT
     req.app.get("io")?.to(code).emit("game:force_stop");
 
     const questions = await Question.find({ sessionId: code }).select("_id");

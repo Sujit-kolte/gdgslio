@@ -78,69 +78,97 @@ io.on("connection", (socket) => {
       socket.join(cleanCode);
       console.log(`User ${socket.id} joined room: ${cleanCode}`);
 
-      // Update lobby count
+      // Update lobby count (Optional: You can remove this if relying on DB count)
       const roomSize = io.sockets.adapter.rooms.get(cleanCode)?.size || 0;
       io.to(cleanCode).emit("session:update", Array(roomSize).fill({}));
     }
   });
 
-  // 2. SYNC STATE (For Reconnecting Users & Late Joiners)
+  // 2. 🟢 SYNC STATE (The Magic Fix for Late Joiners)
   socket.on("sync:state", async (sessionCode) => {
     try {
       const code = String(sessionCode).trim().toUpperCase();
       const session = await Session.findOne({ sessionCode: code });
 
-      // If game isn't active or no question is currently running
-      if (
-        !session ||
-        session.status !== "ACTIVE" ||
-        !session.currentQuestionId
-      ) {
+      if (!session) {
+        socket.emit("error", "Session not found");
+        return;
+      }
+
+      // A. If game is waiting, just show lobby
+      if (session.status === "WAITING") {
         socket.emit("sync:idle");
         return;
       }
 
-      // Check time remaining
-      const remaining = session.questionEndsAt
-        ? Math.floor(
-            (new Date(session.questionEndsAt).getTime() - Date.now()) / 1000,
-          )
-        : 0;
-
-      if (remaining <= 0) {
-        // If time is up, likely in "Result" phase
-        socket.emit("sync:idle");
+      // B. If game is FINISHED, show game over
+      if (session.status === "FINISHED") {
+        socket.emit("game:over", {});
         return;
       }
 
-      // If time remains, send the current question immediately
-      const q = await Question.findById(session.currentQuestionId);
-      if (!q) return;
+      // C. CRITICAL: Check if a question is currently active
+      const now = new Date();
+      if (session.currentQuestionId && session.questionEndsAt > now) {
+        // Calculate remaining seconds
+        const remainingTime = Math.ceil(
+          (new Date(session.questionEndsAt) - now) / 1000,
+        );
 
-      // 🟢 FIX: Calculate real Q number and Total for the Progress Bar
-      const allQuestions = await Question.find({ sessionId: code })
-        .sort({ createdAt: 1 })
-        .select("_id");
+        // Fetch the active question (Using .lean() for speed)
+        const question = await Question.findById(
+          session.currentQuestionId,
+        ).lean();
 
-      const total = allQuestions.length;
-      const currentIdx = allQuestions.findIndex(
-        (x) => x._id.toString() === q._id.toString(),
+        if (question) {
+          // Find the real Question Number (Index + 1)
+          const allQuestions = await Question.find({ sessionId: code })
+            .sort({ createdAt: 1 })
+            .select("_id")
+            .lean();
+
+          const qIndex = allQuestions.findIndex(
+            (q) => q._id.toString() === question._id.toString(),
+          );
+          const total = allQuestions.length;
+
+          // Send the question IMMEDIATELY to this specific user
+          socket.emit("game:question", {
+            qNum: qIndex + 1,
+            total: total,
+            time: remainingTime, // Send ONLY the remaining time
+            question: {
+              _id: question._id,
+              questionText: question.questionText,
+              options: question.options.map((o) => ({ text: o.text })),
+            },
+            isSync: true,
+          });
+          return;
+        }
+      }
+
+      // D. If we are in the "Break" phase (between questions), show the Top 10
+      // This ensures they don't see a blank screen if they join during the break
+      const topPlayers = await mongoose
+        .model("Participant")
+        .find({ sessionId: code })
+        .sort({ totalScore: -1 })
+        .limit(10)
+        .select("name totalScore")
+        .lean();
+
+      socket.emit(
+        "game:ranks",
+        topPlayers.map((p, idx) => ({
+          id: p._id.toString(),
+          rank: idx + 1,
+          name: p.name,
+          score: p.totalScore,
+        })),
       );
-      const qNum = currentIdx !== -1 ? currentIdx + 1 : 1;
-
-      socket.emit("game:question", {
-        qNum: qNum, // ✅ Real Number (e.g., 1)
-        total: total, // ✅ Real Total (e.g., 10)
-        time: remaining,
-        question: {
-          _id: q._id,
-          questionText: q.questionText,
-          options: q.options.map((o) => ({ text: o.text })), // Hide Correct Answer
-        },
-        isSync: true,
-      });
     } catch (e) {
-      console.error("❌ Sync error:", e);
+      console.error("Sync Error:", e);
     }
   });
 
