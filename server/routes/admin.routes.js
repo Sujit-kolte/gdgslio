@@ -1,14 +1,15 @@
 import express from "express";
-import Participant from "../models/participant.model.js"; // 🟢 Import Model for Stats
-
 const router = express.Router();
 
-// 1. VERIFY PASSCODE (Login)
+// 🟢 THIS ROUTE MATCHES YOUR FRONTEND REQUEST
 router.post("/verify-passcode", (req, res) => {
-  // Get passcode from headers OR body
+  // 1. Get passcode from headers OR body (covers both cases)
   const passcode = req.headers["admin-passcode"] || req.body["admin-passcode"];
+
+  // 2. Define the correct password (from Env or default)
   const SYSTEM_PASSCODE = process.env.ADMIN_PASSCODE || "12345";
 
+  // 3. Check
   if (passcode === SYSTEM_PASSCODE) {
     return res.status(200).json({
       success: true,
@@ -19,23 +20,6 @@ router.post("/verify-passcode", (req, res) => {
       success: false,
       message: "Invalid Passcode",
     });
-  }
-});
-
-// 2. 🟢 GET STATS (For Admin Dashboard)
-router.get("/stats", async (req, res) => {
-  try {
-    // Count all participants across all sessions
-    const userCount = await Participant.countDocuments({});
-
-    // You can add more stats here later (e.g., activeSessions, totalQuestions)
-    res.json({
-      success: true,
-      userCount: userCount,
-    });
-  } catch (e) {
-    console.error("Stats Error:", e);
-    res.status(500).json({ error: e.message });
   }
 });
 
