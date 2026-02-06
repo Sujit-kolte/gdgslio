@@ -362,42 +362,6 @@ export default function GamePlay() {
                   <div className="stat-text">Current Rank</div>
                 </div>
               </div>
-
-              {/* 🟢 NEW: Scrollable Top 10 List during Break */}
-              <div className="leaderboard-card">
-                <div className="leaderboard-header">Top 10 Leaders</div>
-                <div className="leaderboard-list">
-                  {leaderboard.length > 0 ? (
-                    leaderboard.map((w, idx) => {
-                      let rankClass = "";
-                      if (idx === 0) rankClass = "gold";
-                      else if (idx === 1) rankClass = "silver";
-                      else if (idx === 2) rankClass = "bronze";
-
-                      const isMe = w.name === player.name;
-                      const itemStyle = isMe
-                        ? { border: "2px solid #4285F4", background: "#e8f0fe" }
-                        : {};
-
-                      return (
-                        <div
-                          key={idx}
-                          className={`leader-item ${rankClass}`}
-                          style={itemStyle}>
-                          <span>
-                            #{idx + 1} {w.name} {isMe ? "(You)" : ""}
-                          </span>
-                          <span className="pts">{w.score}</span>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="leader-item">
-                      <span>Loading ranks...</span>
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
           )}
 
