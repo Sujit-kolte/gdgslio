@@ -11,19 +11,17 @@ export default function Dashboard() {
   const socket = getSocket();
 
   // --- STATE ---
-  // Auth
   const [passcode, setPasscode] = useState("");
-
-  // Data
   const [sessions, setSessions] = useState([]);
   const [questions, setQuestions] = useState([]);
-  const [stats, setStats] = useState({ sessions: 0, questions: 0 });
 
-  // UI Views
+  // 🟢 UPDATED: stats now includes 'users'
+  const [stats, setStats] = useState({ sessions: 0, questions: 0, users: 0 });
+  const [liveUsers, setLiveUsers] = useState(0);
+
   const [currentSessionCode, setCurrentSessionCode] = useState(null);
   const [managerView, setManagerView] = useState(false);
 
-  // Inputs
   const [newTitle, setNewTitle] = useState("");
   const [newCode, setNewCode] = useState("");
   const [qText, setQText] = useState("");
@@ -32,12 +30,9 @@ export default function Dashboard() {
     { text: "", isCorrect: false },
   ]);
 
-  // Modals
   const [previewQ, setPreviewQ] = useState(null);
   const [updateQ, setUpdateQ] = useState(null);
   const [updateText, setUpdateText] = useState("");
-
-  // Theme
   const [theme, setTheme] = useState("light");
 
   // --- INITIALIZATION ---
@@ -45,11 +40,21 @@ export default function Dashboard() {
     const p = sessionStorage.getItem("ADMIN_PASSCODE");
     if (!p) return router.push("/admin");
     setPasscode(p);
+
     loadSessions(p);
+    loadGlobalStats(p); // 🟢 Fetch the user count
 
     const savedTheme = localStorage.getItem("theme") || "light";
     setTheme(savedTheme);
     document.documentElement.setAttribute("data-theme", savedTheme);
+
+    socket.on("session:update", (data) => {
+      setLiveUsers(data.count > 0 ? data.count : 0);
+    });
+
+    return () => {
+      socket.off("session:update");
+    };
   }, []);
 
   const toggleTheme = () => {
@@ -59,7 +64,20 @@ export default function Dashboard() {
     document.documentElement.setAttribute("data-theme", newTheme);
   };
 
-  // --- API ACTIONS: SESSIONS ---
+  // 🟢 NEW API CALL: Fetch Total Users
+  const loadGlobalStats = async (token = passcode) => {
+    try {
+      const res = await fetch(`${API_URL}/admin/stats`, {
+        headers: { "admin-passcode": token },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStats((prev) => ({ ...prev, users: data.userCount }));
+      }
+    } catch (e) {
+      console.error("Stats Load Error", e);
+    }
+  };
 
   const loadSessions = async (token = passcode) => {
     try {
@@ -97,38 +115,24 @@ export default function Dashboard() {
 
   const startSession = async (id, code) => {
     if (!confirm(`Start Session ${code}? Players can join now.`)) return;
-
-    // 1. Open Leaderboard (Keep this to avoid popup blockers)
     window.open(`/leaderboard?code=${code}`, "_blank");
-
     try {
-      // 2. 🟢 CALL THE DEDICATED START ENDPOINT
-      // This endpoint updates DB to "ACTIVE" AND sends the "game:started" socket signal
       const res = await fetch(`${API_URL}/sessions/start`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "admin-passcode": passcode,
         },
-        body: JSON.stringify({ sessionCode: code }), // Send the Code, not the ID
+        body: JSON.stringify({ sessionCode: code }),
       });
-
       const data = await res.json();
-
-      if (data.success) {
-        // Success! The server has now told all users to go to /play
-        console.log("Session started successfully");
-      } else {
-        alert("Failed to start: " + data.message);
-      }
-
-      // 3. Refresh List
+      if (!data.success) alert("Failed to start: " + data.message);
       loadSessions();
     } catch (e) {
-      console.error("Start Session Error:", e);
-      alert("Network error starting session");
+      alert("Error starting session");
     }
   };
+
   const stopSession = async (id) => {
     if (!confirm("Stop Session?")) return;
     await fetch(`${API_URL}/sessions/${id}/status`, {
@@ -150,6 +154,7 @@ export default function Dashboard() {
     });
     if (currentSessionCode === code) closeManager();
     loadSessions();
+    loadGlobalStats(); // Refresh stats
   };
 
   const resetSession = async (id) => {
@@ -160,10 +165,10 @@ export default function Dashboard() {
     });
     alert("Session data cleared.");
     loadSessions();
+    loadGlobalStats(); // Refresh stats
   };
 
   // --- API ACTIONS: QUESTIONS ---
-
   const openQManager = (code) => {
     setCurrentSessionCode(code);
     setManagerView(true);
@@ -173,11 +178,13 @@ export default function Dashboard() {
       { text: "", isCorrect: false },
       { text: "", isCorrect: false },
     ]);
+    socket.emit("join:session", code); // Sync live count
   };
 
   const closeManager = () => {
     setManagerView(false);
     setCurrentSessionCode(null);
+    setLiveUsers(0);
   };
 
   const fetchQuestions = async (code) => {
@@ -204,11 +211,12 @@ export default function Dashboard() {
   };
 
   const saveQuestion = async () => {
-    if (!qText || options.some((o) => !o.text))
-      return alert("Question and Options cannot be empty");
-    if (!options.some((o) => o.isCorrect))
-      return alert("Select at least one correct answer");
-
+    if (
+      !qText ||
+      options.some((o) => !o.text) ||
+      !options.some((o) => o.isCorrect)
+    )
+      return alert("Invalid Question");
     await fetch(`${API_URL}/questions`, {
       method: "POST",
       headers: {
@@ -222,7 +230,6 @@ export default function Dashboard() {
         marks: 10,
       }),
     });
-
     setQText("");
     setOptions([
       { text: "", isCorrect: false },
@@ -252,15 +259,8 @@ export default function Dashboard() {
     fetchQuestions(currentSessionCode);
   };
 
-  // --- UPDATE MODAL ACTIONS ---
-  const openUpdateModal = (q) => {
-    setUpdateQ(q);
-    setUpdateText(q.questionText);
-  };
-
   const confirmUpdate = async () => {
     if (!updateText || !updateQ) return;
-
     await fetch(`${API_URL}/questions/${updateQ._id}`, {
       method: "PUT",
       headers: {
@@ -274,21 +274,18 @@ export default function Dashboard() {
         marks: 10,
       }),
     });
-
     setUpdateQ(null);
     fetchQuestions(currentSessionCode);
   };
 
   return (
     <div className="layout">
-      {/* 1. SIDEBAR */}
+      {/* SIDEBAR */}
       <aside className="sidebar">
         <div className="logo">
           <div className="logo-icon">🛠</div>
           <span>Admin Panel</span>
         </div>
-
-        {/* Create Session */}
         <div
           className="card"
           style={{
@@ -302,12 +299,12 @@ export default function Dashboard() {
           <input
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="Title (e.g. JS Quiz)"
+            placeholder="Title"
           />
           <input
             value={newCode}
             onChange={(e) => setNewCode(e.target.value.toUpperCase())}
-            placeholder="Code (e.g. QUIZ101)"
+            placeholder="Code"
           />
           <button
             className="btn-blue"
@@ -316,7 +313,6 @@ export default function Dashboard() {
             + Add Session
           </button>
         </div>
-
         <h3
           style={{
             fontSize: "0.938rem",
@@ -326,8 +322,6 @@ export default function Dashboard() {
           }}>
           Your Sessions
         </h3>
-
-        {/* Session List */}
         <div>
           {sessions.map((s) => (
             <div
@@ -369,7 +363,7 @@ export default function Dashboard() {
                 <button
                   className="btn-purple"
                   onClick={() => resetSession(s._id)}
-                  title="Reset Scores">
+                  title="Reset">
                   ♻️
                 </button>
                 <button
@@ -383,68 +377,37 @@ export default function Dashboard() {
         </div>
       </aside>
 
-      {/* 2. MAIN CONTENT */}
+      {/* MAIN CONTENT */}
       <main className="main-content">
-        {/* Top Navbar */}
         <div className="top-navbar">
           <div className="page-title">Dashboard Overview</div>
           <div className="navbar-actions">
-            {/* 🆕 Leaderboard Button */}
             <button
               className="leaderboard-link"
               onClick={() =>
                 currentSessionCode
-                  ? window.open(`/leaderboard?code=${currentSessionCode}`)
-                  : alert("Select a session first")
-              }
-              style={{ marginRight: "10px" }}>
+                  ? window.open(
+                      `/leaderboard?code=${currentSessionCode}`,
+                      "_blank",
+                    )
+                  : alert("Select a session")
+              }>
               <span className="leaderboard-icon">🏆</span>
               <span>Leaderboard</span>
             </button>
-
-            <button
-              className="theme-toggle"
-              onClick={toggleTheme}
-              aria-label="Toggle dark mode">
-              {theme === "light" ? (
-                <svg
-                  className="sun-icon"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
-                  />
-                </svg>
-              ) : (
-                <svg
-                  className="moon-icon"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
-                  />
-                </svg>
-              )}
+            <button className="theme-toggle" onClick={toggleTheme}>
+              {theme === "light" ? "🌙" : "☀️"}
             </button>
           </div>
         </div>
 
-        {/* Quick Stats */}
+        {/* 🟢 STATS GRID - REPLACED Total Sessions with Total Participants */}
         <div className="stats-grid">
           <div className="stat-card">
             <div className="stat-icon">👥</div>
-            <div className="stat-value">{stats.sessions}</div>
-            <div className="stat-label">Total Sessions</div>
+            {/* Displaying Real Database User Count */}
+            <div className="stat-value">{stats.users}</div>
+            <div className="stat-label">Total Participants</div>
           </div>
           <div className="stat-card">
             <div className="stat-icon">✓</div>
@@ -453,7 +416,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Manager Views */}
         {!managerView ? (
           <div className="card">
             <div className="placeholder-content">
@@ -470,27 +432,27 @@ export default function Dashboard() {
                 Managing:{" "}
                 <span className="code-badge">{currentSessionCode}</span>
               </h2>
-              <button className="btn-grey" onClick={closeManager}>
+              <div className="live-badge">🔴 {liveUsers} Live</div>
+              <button
+                className="btn-grey"
+                onClick={closeManager}
+                style={{ marginLeft: "auto" }}>
                 Close
               </button>
             </div>
-
             {/* Add Question Form */}
             <div className="card">
               <h3>Add New Question</h3>
               <input
                 value={qText}
                 onChange={(e) => setQText(e.target.value)}
-                placeholder="Enter your question here..."
-                style={{ fontSize: "1rem", padding: "16px" }}
+                placeholder="Question..."
               />
-
               <div>
                 {options.map((opt, idx) => (
                   <div key={idx} className="option-row">
                     <input
                       type="radio"
-                      name="correct"
                       checked={opt.isCorrect}
                       onChange={() =>
                         handleOptionChange(idx, "isCorrect", true)
@@ -498,11 +460,11 @@ export default function Dashboard() {
                     />
                     <input
                       className="opt-text"
-                      placeholder="Option text..."
                       value={opt.text}
                       onChange={(e) =>
                         handleOptionChange(idx, "text", e.target.value)
                       }
+                      placeholder="Option..."
                     />
                     {options.length > 2 && (
                       <button
@@ -516,7 +478,6 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
-
               <button
                 className="btn-grey"
                 style={{ marginTop: "10px" }}
@@ -525,83 +486,77 @@ export default function Dashboard() {
                 }>
                 + Add Option
               </button>
-
               <div style={{ marginTop: "24px" }}>
                 <button className="btn-blue" onClick={saveQuestion}>
                   Save Question
                 </button>
               </div>
             </div>
-
-            {/* Existing Questions List */}
+            {/* Question List */}
             <h3 style={{ margin: "32px 0 16px 0" }}>Existing Questions</h3>
             <div>
-              {questions.length === 0 ? (
-                <p style={{ color: "var(--text-secondary)" }}>
-                  No questions yet.
-                </p>
-              ) : (
-                questions.map((q, index) => (
-                  <div key={q._id} className="question-box">
-                    <div className="q-header">
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          flex: 1,
-                        }}>
-                        <span className="question-number">{index + 1}</span>
-                        <strong>{q.questionText}</strong>
+              {questions.map((q, index) => (
+                <div key={q._id} className="question-box">
+                  <div className="q-header">
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        flex: 1,
+                      }}>
+                      <span className="question-number">{index + 1}</span>
+                      <strong>{q.questionText}</strong>
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "12px",
+                        alignItems: "center",
+                      }}>
+                      <div className="reorder-controls">
+                        <button
+                          className="reorder-btn"
+                          disabled={index === 0}
+                          onClick={() => moveQuestion(q._id, "up")}>
+                          ▲
+                        </button>
+                        <button
+                          className="reorder-btn"
+                          disabled={index === questions.length - 1}
+                          onClick={() => moveQuestion(q._id, "down")}>
+                          ▼
+                        </button>
                       </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "12px",
-                          alignItems: "center",
-                        }}>
-                        <div className="reorder-controls">
-                          <button
-                            className="reorder-btn"
-                            disabled={index === 0}
-                            onClick={() => moveQuestion(q._id, "up")}>
-                            ▲
-                          </button>
-                          <button
-                            className="reorder-btn"
-                            disabled={index === questions.length - 1}
-                            onClick={() => moveQuestion(q._id, "down")}>
-                            ▼
-                          </button>
-                        </div>
-                        <div className="q-actions">
-                          <button
-                            className="btn-outline"
-                            onClick={() => setPreviewQ(q)}>
-                            Preview
-                          </button>
-                          <button
-                            className="btn-blue"
-                            onClick={() => openUpdateModal(q)}>
-                            Update
-                          </button>
-                          <button
-                            className="btn-red"
-                            onClick={() => deleteQuestion(q._id)}>
-                            Delete
-                          </button>
-                        </div>
+                      <div className="q-actions">
+                        <button
+                          className="btn-outline"
+                          onClick={() => setPreviewQ(q)}>
+                          Preview
+                        </button>
+                        <button
+                          className="btn-blue"
+                          onClick={() => {
+                            setUpdateQ(q);
+                            setUpdateText(q.questionText);
+                          }}>
+                          Update
+                        </button>
+                        <button
+                          className="btn-red"
+                          onClick={() => deleteQuestion(q._id)}>
+                          Delete
+                        </button>
                       </div>
                     </div>
                   </div>
-                ))
-              )}
+                </div>
+              ))}
             </div>
           </div>
         )}
       </main>
 
-      {/* 3. MODALS */}
-      {/* Preview Modal */}
+      {/* MODALS */}
       {previewQ && (
         <div
           className="modal show"
@@ -612,44 +567,34 @@ export default function Dashboard() {
             <span className="close" onClick={() => setPreviewQ(null)}>
               ✕
             </span>
-            <h2 style={{ marginBottom: "24px" }}>Question Preview</h2>
+            <h2>Preview</h2>
             <div
               style={{
                 padding: "20px",
                 background: "var(--bg-light)",
                 borderRadius: "12px",
               }}>
-              <h3
-                style={{ marginBottom: "16px", color: "var(--text-primary)" }}>
-                {previewQ.questionText}
-              </h3>
-              <div style={{ display: "grid", gap: "8px" }}>
-                {previewQ.options.map((o, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: "10px",
-                      borderRadius: "8px",
-                      background: o.isCorrect
-                        ? "rgba(52, 168, 83, 0.1)"
-                        : "white",
-                      border: o.isCorrect
-                        ? "1px solid var(--google-green)"
-                        : "1px solid var(--border-light)",
-                      color: o.isCorrect
-                        ? "var(--google-green)"
-                        : "var(--text-primary)",
-                    }}>
-                    {o.text} {o.isCorrect && "✅"}
-                  </div>
-                ))}
-              </div>
+              <h3>{previewQ.questionText}</h3>
+              {previewQ.options.map((o, i) => (
+                <div
+                  key={i}
+                  style={{
+                    padding: "10px",
+                    marginTop: "8px",
+                    borderRadius: "8px",
+                    background: o.isCorrect ? "#e6f4ea" : "white",
+                    border: o.isCorrect
+                      ? "1px solid #34a853"
+                      : "1px solid #dadce0",
+                  }}>
+                  {o.text} {o.isCorrect && "✅"}
+                </div>
+              ))}
             </div>
           </div>
         </div>
       )}
 
-      {/* Update Modal */}
       {updateQ && (
         <div
           className="modal show"
@@ -660,12 +605,10 @@ export default function Dashboard() {
             <span className="close" onClick={() => setUpdateQ(null)}>
               ✕
             </span>
-            <h2 style={{ marginBottom: "24px" }}>Update Question</h2>
+            <h2>Update</h2>
             <input
               value={updateText}
               onChange={(e) => setUpdateText(e.target.value)}
-              placeholder="Question text..."
-              style={{ fontSize: "1rem", padding: "16px" }}
             />
             <div
               style={{
@@ -685,10 +628,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 4. STYLES */}
       <style jsx global>{`
         @import url("https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Roboto:wght@300;400;500;700&display=swap");
-
         :root {
           --google-blue: #4285f4;
           --google-red: #ea4335;
@@ -699,46 +640,27 @@ export default function Dashboard() {
           --text-primary: #202124;
           --text-secondary: #5f6368;
           --border-light: #dadce0;
-          --shadow-sm:
-            0 1px 2px 0 rgba(60, 64, 67, 0.3),
-            0 1px 3px 1px rgba(60, 64, 67, 0.15);
-          --shadow-md:
-            0 1px 3px 0 rgba(60, 64, 67, 0.3),
-            0 4px 8px 3px rgba(60, 64, 67, 0.15);
-          --shadow-lg:
-            0 2px 6px 2px rgba(60, 64, 67, 0.15),
-            0 8px 24px 4px rgba(60, 64, 67, 0.15);
+          --shadow-sm: 0 1px 2px 0 rgba(60, 64, 67, 0.3);
+          --shadow-lg: 0 8px 24px 4px rgba(60, 64, 67, 0.15);
         }
-
         [data-theme="dark"] {
           --white: #1f1f1f;
           --bg-light: #121212;
           --text-primary: #e8eaed;
           --text-secondary: #9aa0a6;
           --border-light: #3c4043;
-          --shadow-sm:
-            0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
-          --shadow-md:
-            0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 4px 8px 3px rgba(0, 0, 0, 0.15);
-          --shadow-lg:
-            0 2px 6px 2px rgba(0, 0, 0, 0.15),
-            0 8px 24px 4px rgba(0, 0, 0, 0.15);
         }
-
         body {
           margin: 0;
           font-family: "Roboto", sans-serif;
           background: var(--bg-light);
           color: var(--text-primary);
         }
-
         .layout {
           display: grid;
           grid-template-columns: 280px 1fr;
           min-height: 100vh;
         }
-
-        /* SIDEBAR */
         .sidebar {
           background: var(--white);
           padding: 24px 16px;
@@ -748,19 +670,16 @@ export default function Dashboard() {
           overflow-y: auto;
           border-right: 1px solid var(--border-light);
         }
-
         .logo {
           font-family: "Google Sans", sans-serif;
           font-size: 1.5rem;
           font-weight: 700;
-          color: var(--text-primary);
-          margin-bottom: 32px;
           display: flex;
           align-items: center;
           gap: 8px;
+          margin-bottom: 32px;
           padding: 0 12px;
         }
-
         .logo-icon {
           width: 32px;
           height: 32px;
@@ -774,16 +693,10 @@ export default function Dashboard() {
           align-items: center;
           justify-content: center;
           color: white;
-          font-size: 18px;
         }
-
-        /* MAIN CONTENT */
         .main-content {
           padding: 32px 40px;
-          max-width: 1400px;
         }
-
-        /* TOP NAVBAR */
         .top-navbar {
           background: var(--white);
           padding: 20px 32px;
@@ -794,21 +707,16 @@ export default function Dashboard() {
           justify-content: space-between;
           align-items: center;
         }
-
         .page-title {
           font-family: "Google Sans", sans-serif;
           font-size: 1.75rem;
           font-weight: 700;
-          color: var(--text-primary);
         }
-
         .navbar-actions {
           display: flex;
           align-items: center;
           gap: 12px;
         }
-
-        /* LEADERBOARD LINK */
         .leaderboard-link {
           display: flex;
           align-items: center;
@@ -820,49 +728,25 @@ export default function Dashboard() {
             var(--google-green)
           );
           color: white;
-          text-decoration: none;
           border-radius: 12px;
-          font-family: "Google Sans", sans-serif;
           font-weight: 600;
-          font-size: 0.875rem;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          cursor: pointer;
+          border: none;
         }
-        .leaderboard-link:hover {
-          transform: translateY(-2px);
-          box-shadow: var(--shadow-md);
-        }
-        .leaderboard-icon {
-          font-size: 20px;
-        }
-
-        /* THEME TOGGLE */
         .theme-toggle {
           background: var(--bg-light);
           border: 2px solid var(--border-light);
           cursor: pointer;
           padding: 10px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
           border-radius: 12px;
-          width: 44px;
-          height: 44px;
+          font-size: 1.2rem;
         }
-
-        .theme-toggle svg {
-          width: 24px;
-          height: 24px;
-          color: var(--text-primary);
-        }
-
-        /* STATS */
         .stats-grid {
           display: grid;
           grid-template-columns: repeat(2, 1fr);
           gap: 20px;
           margin-bottom: 32px;
         }
-
         .stat-card {
           background: var(--white);
           padding: 24px;
@@ -871,8 +755,7 @@ export default function Dashboard() {
           position: relative;
           overflow: hidden;
         }
-
-        .stat-card:nth-child(1)::before {
+        .stat-card::before {
           content: "";
           position: absolute;
           top: 0;
@@ -882,15 +765,8 @@ export default function Dashboard() {
           background: var(--google-blue);
         }
         .stat-card:nth-child(2)::before {
-          content: "";
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 4px;
           background: var(--google-green);
         }
-
         .stat-icon {
           width: 48px;
           height: 48px;
@@ -903,22 +779,17 @@ export default function Dashboard() {
           background: rgba(66, 133, 244, 0.1);
           color: var(--google-blue);
         }
-
         .stat-value {
           font-family: "Google Sans", sans-serif;
           font-size: 2rem;
           font-weight: 700;
-          color: var(--text-primary);
           margin-bottom: 4px;
         }
-
         .stat-label {
           font-size: 0.875rem;
           color: var(--text-secondary);
           font-weight: 500;
         }
-
-        /* CARDS & INPUTS */
         .card {
           background: var(--white);
           padding: 28px;
@@ -926,7 +797,6 @@ export default function Dashboard() {
           margin-bottom: 24px;
           box-shadow: var(--shadow-sm);
         }
-
         input {
           width: 100%;
           padding: 14px 16px;
@@ -935,37 +805,24 @@ export default function Dashboard() {
           border: 2px solid var(--border-light);
           border-radius: 12px;
           color: var(--text-primary);
-          font-size: 0.938rem;
-          font-family: "Roboto", sans-serif;
           box-sizing: border-box;
         }
-
-        input:focus {
-          outline: none;
-          border-color: var(--google-blue);
-        }
-
-        /* BUTTONS */
         button {
           padding: 12px 24px;
           border: none;
           border-radius: 12px;
           cursor: pointer;
           font-weight: 600;
-          font-size: 0.875rem;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           gap: 8px;
-          font-family: "Google Sans", sans-serif;
           transition: all 0.2s;
         }
-
         button:hover {
           transform: translateY(-2px);
-          box-shadow: var(--shadow-md);
+          box-shadow: var(--shadow-sm);
         }
-
         .btn-blue {
           background: var(--google-blue);
           color: white;
@@ -983,7 +840,7 @@ export default function Dashboard() {
           color: var(--text-primary);
         }
         .btn-purple {
-          background: #9334e9;
+          background: #7c3aed;
           color: white;
         }
         .btn-grey {
@@ -995,8 +852,6 @@ export default function Dashboard() {
           color: var(--google-blue);
           border: 2px solid var(--google-blue);
         }
-
-        /* SESSION LIST */
         .session-item {
           padding: 20px;
           background: var(--white);
@@ -1004,16 +859,13 @@ export default function Dashboard() {
           border-radius: 12px;
           margin-bottom: 12px;
         }
-
         .active-session {
           border-color: var(--google-green);
           background: rgba(52, 168, 83, 0.03);
         }
-
         .session-title {
           font-weight: 700;
-          font-size: 1.063rem;
-          color: var(--text-primary);
+          font-size: 1.06rem;
           margin-bottom: 6px;
         }
         .session-meta {
@@ -1024,7 +876,6 @@ export default function Dashboard() {
           align-items: center;
           margin-bottom: 16px;
         }
-
         .badge {
           padding: 4px 12px;
           font-size: 0.75rem;
@@ -1044,12 +895,9 @@ export default function Dashboard() {
           background: rgba(0, 0, 0, 0.05);
           color: var(--text-secondary);
         }
-
-        /* QUESTION MANAGER */
         .section-header {
           display: flex;
-          justify-content: space-between;
-          align-items: center;
+          alignitems: center;
           padding: 20px 28px;
           background: linear-gradient(
             135deg,
@@ -1060,13 +908,31 @@ export default function Dashboard() {
           margin-bottom: 20px;
           border-left: 4px solid var(--google-blue);
         }
-
         .code-badge {
           color: var(--google-blue);
           font-weight: 700;
-          font-size: 1.125rem;
+          font-size: 1.1rem;
         }
-
+        .live-badge {
+          margin-left: 20px;
+          padding: 6px 12px;
+          background: #ffebee;
+          color: #d32f2f;
+          border-radius: 20px;
+          font-weight: 700;
+          font-size: 0.85rem;
+        }
+        @keyframes pulse {
+          0% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.7;
+          }
+          100% {
+            opacity: 1;
+          }
+        }
         .question-box {
           border: 2px solid var(--border-light);
           padding: 24px;
@@ -1074,7 +940,6 @@ export default function Dashboard() {
           background: var(--white);
           border-radius: 12px;
         }
-
         .question-number {
           display: inline-flex;
           align-items: center;
@@ -1087,10 +952,9 @@ export default function Dashboard() {
           font-weight: 700;
           margin-right: 12px;
         }
-
         .reorder-controls {
           display: flex;
-          flex-direction: column;
+          flexdirection: column;
           gap: 4px;
         }
         .reorder-btn {
@@ -1101,11 +965,6 @@ export default function Dashboard() {
           color: var(--text-primary);
           border-radius: 6px;
         }
-        .reorder-btn:disabled {
-          opacity: 0.3;
-          cursor: not-allowed;
-        }
-
         .option-row {
           display: flex;
           gap: 12px;
@@ -1115,12 +974,9 @@ export default function Dashboard() {
         .option-row input[type="radio"] {
           width: 20px;
           height: 20px;
-          margin-bottom: 0;
           cursor: pointer;
           accent-color: var(--google-blue);
         }
-
-        /* PLACEHOLDER */
         .placeholder-content {
           text-align: center;
           padding: 80px 20px;
@@ -1130,12 +986,6 @@ export default function Dashboard() {
           margin-bottom: 24px;
           opacity: 0.3;
         }
-        .placeholder-text {
-          font-size: 1.25rem;
-          color: var(--text-secondary);
-        }
-
-        /* MODAL */
         .modal {
           display: none;
           position: fixed;
@@ -1153,7 +1003,6 @@ export default function Dashboard() {
           align-items: center;
           justify-content: center;
         }
-
         .modal-content {
           background: var(--white);
           padding: 32px;
@@ -1164,7 +1013,6 @@ export default function Dashboard() {
           position: relative;
           animation: slideUp 0.3s ease;
         }
-
         .close {
           position: absolute;
           right: 20px;
@@ -1181,9 +1029,7 @@ export default function Dashboard() {
         }
         .close:hover {
           background: var(--bg-light);
-          color: var(--text-primary);
         }
-
         @keyframes fadeIn {
           from {
             opacity: 0;

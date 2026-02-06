@@ -57,8 +57,15 @@ export default function GamePlay() {
     socket.on("sync:idle", () => setView("LOBBY"));
 
     // 🟢 3. FORCE STOP LISTENER (Navigate to Landing Page)
+    // 🟢 3. FORCE STOP LISTENER (Navigate to Landing Page)
     socket.on("game:force_stop", () => {
       alert("The host has ended the session.");
+
+      // Clear data so they don't get stuck if they click 'Back'
+      sessionStorage.removeItem("SESSION_CODE");
+      sessionStorage.removeItem("PARTICIPANT_ID");
+      sessionStorage.removeItem("PLAYER_NAME");
+
       router.push("/");
     });
 

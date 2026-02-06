@@ -2,14 +2,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSocket } from "@/lib/socket";
-import Footer from "@/components/Footer";
 
 export default function LobbyPage() {
   const router = useRouter();
   const socket = getSocket();
 
   // State for real-time data
-  const [participantCount, setParticipantCount] = useState(1); // Start at 1 (Me)
+  const [participantCount, setParticipantCount] = useState(1);
   const [myName, setMyName] = useState("");
   const [statusText, setStatusText] = useState("Waiting for Host...");
 
@@ -29,28 +28,39 @@ export default function LobbyPage() {
     // 2. Join Session
     socket.emit("join:session", code);
 
-    // 🟢 3. LISTEN FOR GAME START (Navigation)
+    // 🟢 3. LISTEN FOR GAME START
     socket.on("game:started", () => {
-      console.log("🚀 Game Started! Redirecting to Play Area...");
+      console.log("🚀 Game Started! Redirecting...");
       setStatusText("Game Starting! 🚀");
       setTimeout(() => {
         router.push("/play");
-      }, 500); // Small delay for visual effect
+      }, 500);
     });
 
-    // 🟢 4. LISTEN FOR REAL COUNT
-    // Ensure your backend emits "session:update" with the array of users
-    socket.on("session:update", (participantsArray) => {
-      console.log("👥 Participants Update:", participantsArray);
-      if (Array.isArray(participantsArray)) {
-        setParticipantCount(participantsArray.length);
+    // 🟢 4. FIX: LISTEN FOR REAL COUNT (Backend sends object { count: N })
+    socket.on("session:update", (data) => {
+      // Check if data has .count property (Backend Update)
+      if (data && typeof data.count === "number") {
+        setParticipantCount(data.count);
       }
+      // Fallback for array (Old Backend version)
+      else if (Array.isArray(data)) {
+        setParticipantCount(data.length);
+      }
+    });
+
+    // 🟢 5. NEW: LISTEN FOR FORCE STOP (Kick to Home)
+    socket.on("game:force_stop", () => {
+      alert("The host has ended the session.");
+      sessionStorage.clear(); // Clear data so they can't rejoin easily
+      router.push("/");
     });
 
     // Cleanup
     return () => {
       socket.off("game:started");
       socket.off("session:update");
+      socket.off("game:force_stop");
     };
   }, []);
 
@@ -69,7 +79,7 @@ export default function LobbyPage() {
           </div>
         </header>
 
-        {/* MAIN CONTENT: JUST THE COUNT */}
+        {/* MAIN CONTENT */}
         <main className="lobby-main">
           <div className="welcome-text">
             <h2>

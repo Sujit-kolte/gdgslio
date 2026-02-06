@@ -7,15 +7,13 @@ import Question from "../models/question.model.js";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // --- HELPER: THE AUTOMATIC GAME LOOP ---
-// This runs in the background once the game starts
 const runGameLoop = async (sessionCode, io) => {
   console.log(`🚀 Starting Game Loop for ${sessionCode}`);
 
   try {
-    // 1. Fetch all questions for this session (Optimized with .lean())
     const questions = await Question.find({ sessionId: sessionCode })
       .sort({ createdAt: 1 })
-      .lean(); // 🟢 LIGHTWEIGHT QUERY
+      .lean();
 
     if (questions.length === 0) {
       console.log("No questions found.");
@@ -23,14 +21,12 @@ const runGameLoop = async (sessionCode, io) => {
       return;
     }
 
-    // 2. Loop through every question
     for (let i = 0; i < questions.length; i++) {
       const question = questions[i];
-      const timeLimit = 15; // ⏱️ 15 Seconds per question
+      const timeLimit = 15;
 
       console.log(`📤 Sending Question ${i + 1}: ${question.questionText}`);
 
-      // A. UPDATE DB (So late joiners know what's happening)
       await Session.updateOne(
         { sessionCode },
         {
@@ -39,7 +35,6 @@ const runGameLoop = async (sessionCode, io) => {
         },
       );
 
-      // B. EMIT QUESTION TO PHONES
       io.to(sessionCode).emit("game:question", {
         qNum: i + 1,
         total: questions.length,
@@ -47,29 +42,25 @@ const runGameLoop = async (sessionCode, io) => {
         question: {
           _id: question._id,
           questionText: question.questionText,
-          options: question.options.map((o) => ({ text: o.text })), // 🔒 Hide Correct Answer
+          options: question.options.map((o) => ({ text: o.text })),
         },
       });
 
-      // C. WAIT FOR TIMER (The "Thinking" Phase)
       await sleep(timeLimit * 1000);
 
-      // D. EMIT RESULT (Show correct answer)
       const correctOption = question.options.find((o) => o.isCorrect);
       io.to(sessionCode).emit("game:result", {
         correctAnswer: correctOption ? correctOption.text : "N/A",
       });
 
-      // 🟢 E. UPDATE RANKS (OPTIMIZED - SEND TOP 10)
-      // Uses .lean() for speed and .limit(10) for network safety
       const participants = await Participant.find({ sessionId: sessionCode })
         .sort({ totalScore: -1 })
-        .limit(10) // 🟢 LIMIT TO TOP 10
+        .limit(10)
         .select("name totalScore")
         .lean();
 
       const rankList = participants.map((p, idx) => ({
-        id: p._id.toString(), // Ensure ID is string
+        id: p._id.toString(),
         rank: idx + 1,
         name: p.name,
         score: p.totalScore,
@@ -77,19 +68,16 @@ const runGameLoop = async (sessionCode, io) => {
 
       io.to(sessionCode).emit("game:ranks", rankList);
 
-      // F. WAIT FOR BREAK (The "Celebration" Phase)
-      await sleep(5000); // 5 Seconds break before next question
+      await sleep(5000);
     }
 
-    // 3. GAME OVER
     console.log(`🏁 Game Over for ${sessionCode}`);
     await Session.updateOne({ sessionCode }, { status: "FINISHED" });
 
-    // Calculate final winners (Top 3)
     const winners = await Participant.find({ sessionId: sessionCode })
       .sort({ totalScore: -1 })
       .limit(3)
-      .lean(); // 🟢 LIGHTWEIGHT QUERY
+      .lean();
 
     io.to(sessionCode).emit("game:over", {
       winners: winners.map((w) => ({ name: w.name, score: w.totalScore })),
@@ -103,7 +91,6 @@ const runGameLoop = async (sessionCode, io) => {
    CONTROLLERS
 ========================================================= */
 
-// 1. CREATE SESSION
 export const createSession = async (req, res, next) => {
   try {
     const { title, description, sessionCode } = req.body;
@@ -129,7 +116,6 @@ export const createSession = async (req, res, next) => {
   }
 };
 
-// 2. GET ALL SESSIONS
 export const getAllSessions = async (req, res, next) => {
   try {
     const sessions = await Session.find({ status: { $ne: "DELETED" } }).sort({
@@ -141,7 +127,6 @@ export const getAllSessions = async (req, res, next) => {
   }
 };
 
-// 3. GET SINGLE SESSION
 export const getSessionByCode = async (req, res, next) => {
   try {
     const { sessionCode } = req.params;
@@ -157,14 +142,12 @@ export const getSessionByCode = async (req, res, next) => {
   }
 };
 
-// 4. 🟢 START GAME (TRIGGERS THE LOOP)
 export const startGame = async (req, res, next) => {
   try {
     const { sessionCode } = req.body;
     const io = req.app.get("io");
     const code = sessionCode.toUpperCase();
 
-    // 1. Check if already active
     const existing = await Session.findOne({ sessionCode: code });
     if (existing.status === "ACTIVE") {
       return res
@@ -172,7 +155,6 @@ export const startGame = async (req, res, next) => {
         .json({ success: false, message: "Game already running!" });
     }
 
-    // 2. Update DB
     const session = await Session.findOneAndUpdate(
       { sessionCode: code },
       { status: "ACTIVE", startTime: new Date() },
@@ -184,11 +166,7 @@ export const startGame = async (req, res, next) => {
         .status(404)
         .json({ success: false, message: "Session not found" });
 
-    // 3. Notify Clients "Game Started" (Move to /play)
     io.to(code).emit("game:started");
-
-    // 4. 🚀 FIRE AND FORGET THE GAME LOOP
-    // We do NOT await this, so the response returns immediately to the Admin
     runGameLoop(code, io);
 
     res.json({ success: true, message: "Game Loop Initiated!", data: session });
@@ -197,11 +175,12 @@ export const startGame = async (req, res, next) => {
   }
 };
 
-// 5. UPDATE STATUS (Manual Stop/Reset)
+// 🟢 5. UPDATE STATUS (FIXED: Kicks users when stopped)
 export const updateSessionStatus = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
     const { status } = req.body;
+    const io = req.app.get("io"); // Get Socket
 
     const session = await Session.findByIdAndUpdate(
       sessionId,
@@ -211,13 +190,18 @@ export const updateSessionStatus = async (req, res, next) => {
     if (!session)
       return res.status(404).json({ success: false, message: "Not found" });
 
+    // 🟢 FORCE STOP TRIGGER
+    // If Admin clicks "Stop" (COMPLETED), navigate everyone to home
+    if (status === "COMPLETED") {
+      io.to(session.sessionCode).emit("game:force_stop");
+    }
+
     res.json({ success: true, message: `Status: ${status}`, data: session });
   } catch (error) {
     next(error);
   }
 };
 
-// 6. DELETE SESSION
 export const deleteSession = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
@@ -252,7 +236,6 @@ export const deleteSession = async (req, res, next) => {
   }
 };
 
-// 7. RESET DATA
 export const resetSessionData = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
@@ -282,7 +265,6 @@ export const resetSessionData = async (req, res, next) => {
   }
 };
 
-// 8. PERMANENT DELETE
 export const deleteSessionPermanently = async (req, res, next) => {
   try {
     const { sessionCode } = req.params;
@@ -291,7 +273,6 @@ export const deleteSessionPermanently = async (req, res, next) => {
     if (!session)
       return res.status(404).json({ success: false, message: "Not found" });
 
-    // 🟢 TRIGGER CLIENT REDIRECT
     req.app.get("io")?.to(code).emit("game:force_stop");
 
     const questions = await Question.find({ sessionId: code }).select("_id");

@@ -3,12 +3,14 @@
 import React, { useState, useEffect, useRef } from "react";
 import Head from "next/head";
 import Link from "next/link";
+// 🟢 CHANGE 1: Import the icons library
+import { FaInstagram, FaLinkedin, FaGithub, FaEnvelope } from "react-icons/fa";
 
 export default function GDGLandingPage() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [roomCode, setRoomCode] = useState("");
-  const [quizState, setQuizState] = useState(0); // 0: idle, 1: selected, 2: correct, 3: score, 4: celebrate
+  const [quizState, setQuizState] = useState(0);
   const [visibleSteps, setVisibleSteps] = useState(0);
 
   const processRef = useRef(null);
@@ -27,10 +29,10 @@ export default function GDGLandingPage() {
   useEffect(() => {
     const runQuizCycle = () => {
       setQuizState(0);
-      setTimeout(() => setQuizState(1), 1000); // Select option
-      setTimeout(() => setQuizState(2), 2000); // Reveal correct
-      setTimeout(() => setQuizState(3), 2800); // Show score
-      setTimeout(() => setQuizState(4), 3500); // Celebrate
+      setTimeout(() => setQuizState(1), 1000);
+      setTimeout(() => setQuizState(2), 2000);
+      setTimeout(() => setQuizState(3), 2800);
+      setTimeout(() => setQuizState(4), 3500);
     };
 
     runQuizCycle();
@@ -38,7 +40,7 @@ export default function GDGLandingPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // --- Intersection Observer for Process Timeline ---
+  // --- Intersection Observer ---
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -70,10 +72,7 @@ export default function GDGLandingPage() {
       <Head>
         <title>GDG SKNCOE</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <link
-          rel="stylesheet"
-          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
-        />{" "}
+        {/* 🟢 CHANGE 2: Removed the broken FontAwesome Link */}
         <link
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600;800&display=swap"
           rel="stylesheet"
@@ -222,7 +221,6 @@ export default function GDGLandingPage() {
           box-shadow: 0 15px 40px rgba(37, 99, 235, 0.4);
         }
 
-        /* Quiz Mockup */
         .quiz-phone-mockup {
           width: 320px;
           height: 600px;
@@ -306,7 +304,6 @@ export default function GDGLandingPage() {
           transition: opacity 0.4s;
           z-index: 50;
         }
-
         .celebration-overlay.active {
           opacity: 1;
         }
@@ -320,8 +317,6 @@ export default function GDGLandingPage() {
           opacity: 0;
           border-radius: 2px;
         }
-
-        /* This triggers the animation only when the parent is active */
         .celebration-overlay.active .confetti-piece {
           animation: burst 1s ease-out forwards;
         }
@@ -333,7 +328,6 @@ export default function GDGLandingPage() {
           }
           100% {
             opacity: 0;
-            /* Uses the CSS variables defined in the inline style */
             transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y)))
               rotate(var(--r));
           }
@@ -345,7 +339,6 @@ export default function GDGLandingPage() {
           transform: scale(0);
           transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-
         .celebration-overlay.active .trophy {
           transform: scale(1);
           animation: trophy-bounce 1s infinite;
@@ -360,7 +353,7 @@ export default function GDGLandingPage() {
             transform: scale(1.1);
           }
         }
-        /* Timeline */
+
         .process-section-wrapper {
           padding: 6rem 5%;
           text-align: center;
@@ -447,26 +440,12 @@ export default function GDGLandingPage() {
 
         .footer {
           background-color: #4285f4;
-          padding: 60px 0 20px 0;
-          border-top-left-radius: 100px;
-          border-top-right-radius: 100px;
-          border-top: 1px solid #eee;
-          font-family: "Google Sans", sans-serif;
-        }
-
-        .footer {
-          background-color: #4285f4; /* Google Blue */
           padding: 80px 5% 40px;
-          border-top-left-radius: 95px; /* Large rounded corner from image */
+          border-top-left-radius: 95px;
           border-top-right-radius: 95px;
           color: white;
           font-family: "Google Sans", Arial, sans-serif;
         }
-        .footer-section footer-socials-wrapper p {
-          font-size: 0.9rem;
-          display: center;
-        }
-
         .footer-container {
           max-width: 1200px;
           margin: 0 auto;
@@ -475,8 +454,6 @@ export default function GDGLandingPage() {
           align-items: center;
           gap: 2rem;
         }
-
-        /* Brand Section */
         .footer-logo-container {
           display: flex;
           align-items: center;
@@ -486,39 +463,32 @@ export default function GDGLandingPage() {
           border-radius: 20px;
           width: fit-content;
         }
-
         .footer-logo-img {
           height: 50px;
-          filter: brightness(0) invert(1); /* Makes logo white if it's dark */
+          filter: brightness(0) invert(1);
         }
-
         .footer-logo-text {
           display: flex;
           flex-direction: column;
         }
-
         .on-campus {
           font-weight: 800;
           font-size: 1.2rem;
           letter-spacing: 1px;
         }
-
         .college-name {
           font-size: 0.8rem;
           opacity: 0.9;
           max-width: 200px;
         }
 
-        /* Center Section */
         .footer-center {
           text-align: center;
         }
-
         .copyright {
           font-weight: 600;
           margin-bottom: 15px;
         }
-
         .email-pill {
           background: rgba(255, 255, 255, 0.15);
           padding: 12px 24px;
@@ -530,18 +500,15 @@ export default function GDGLandingPage() {
           gap: 10px;
           transition: background 0.3s;
         }
-
         .email-pill:hover {
           background: rgba(255, 255, 255, 0.25);
         }
 
-        /* Socials */
         .social-links {
           display: flex;
           gap: 20px;
           justify-content: flex-end;
         }
-
         .social-links a {
           width: 45px;
           height: 45px;
@@ -555,32 +522,57 @@ export default function GDGLandingPage() {
           font-size: 1.2rem;
           transition: transform 0.3s;
         }
-
         .social-links a:hover {
           transform: translateY(-5px);
           background: white;
           color: #4285f4;
         }
 
-        /* Bottom Area */
-        .footer-bottom {
-          margin-top: 60px;
-          text-align: center;
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
-          padding-top: 30px;
-          font-size: 0.95rem;
+        @media (max-width: 1024px) {
+          .hero {
+            flex-direction: column;
+            text-align: center;
+            padding: 8rem 5% 4rem;
+            gap: 4rem;
+          }
+          .hero-content {
+            align-items: center;
+          }
+          .main-heading {
+            font-size: 3.5rem;
+          }
+          .quiz-phone-mockup {
+            width: 280px;
+            height: 520px;
+          }
         }
-
-        .tagline {
-          margin-top: 10px;
-          font-weight: 500;
+        @media (max-width: 850px) {
+          .timeline {
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+          }
+          .timeline-line {
+            left: 50%;
+            top: 0;
+            width: 4px;
+            height: 100%;
+            transform: translateX(-50%);
+          }
+          .timeline-progress {
+            width: 100% !important;
+            height: ${(visibleSteps / 4) * 100}%;
+          }
+          .process-card {
+            width: 280px;
+            margin: 0 auto;
+          }
         }
-
-        /* Mobile Responsiveness */
-        @media (max-width: 900px) {
+        @media (max-width: 768px) {
           .footer-container {
             grid-template-columns: 1fr;
             text-align: center;
+            gap: 3rem;
           }
           .footer-logo-container,
           .social-links {
@@ -591,97 +583,19 @@ export default function GDGLandingPage() {
             border-top-left-radius: 60px;
             border-top-right-radius: 60px;
           }
-        }
-        /* Responsive Layout Adjustments */
-
-        /* Tablet & Smaller (up to 1024px) */
-        @media (max-width: 1024px) {
-          .hero {
-            flex-direction: column;
-            text-align: center;
-            padding: 8rem 5% 4rem;
-            gap: 4rem;
-          }
-
-          .hero-content {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-          }
-
-          .main-heading {
-            font-size: 3.5rem;
-          }
-
-          .hero-description {
-            max-width: 100%;
-          }
-
-          .quiz-phone-mockup {
-            width: 280px; /* Slightly smaller for mobile */
-            height: 520px;
-          }
-        }
-
-        /* Timeline/Process Mobile Fix */
-        @media (max-width: 850px) {
-          .timeline {
-            flex-direction: column;
-            align-items: center;
-            gap: 2rem;
-          }
-
-          .timeline-line {
-            left: 50%;
-            top: 0;
-            width: 4px;
-            height: 100%;
-            transform: translateX(-50%);
-          }
-
-          .timeline-progress {
-            width: 100% !important;
-            height: ${(visibleSteps / 4) * 100}%;
-            transition: height 1s ease;
-          }
-
-          .process-card {
-            width: 280px;
-            margin: 0 auto;
-          }
-        }
-
-        /* Footer Grid Mobile Fix */
-        @media (max-width: 768px) {
-          .footer-container {
-            grid-template-columns: 1fr; /* Stack footer sections */
-            text-align: center;
-            gap: 3rem;
-          }
-
-          .footer-logo-container,
-          .social-links {
-            margin: 0 auto;
-            justify-content: center;
-          }
-
           .navbar {
             padding: 1rem 3%;
           }
-
           .logo {
             font-size: 1.2rem;
           }
         }
-
-        /* Small Phones (up to 480px) */
         @media (max-width: 480px) {
           .main-heading {
             font-size: 2.5rem;
           }
-
           .hero-btn {
-            width: 100%; /* Full width buttons for easier tapping */
+            width: 100%;
             padding: 1rem;
           }
         }
@@ -692,19 +606,22 @@ export default function GDGLandingPage() {
           <div className="logo">GDG SKNCOE</div>
           <nav>
             <div className="header-socials-wrapper">
-              <div className="social-links">
+              <div
+                className="social-links"
+                style={{ justifyContent: "center", gap: "15px" }}>
+                {/* 🟢 CHANGE 3: Used React Icons here */}
                 <a
                   href="https://www.instagram.com/gdg_skncoe?igsh=MWNrcmlha2NzejJmag=="
                   aria-label="Instagram">
-                  <i className="fab fa-instagram"></i>
+                  <FaInstagram size={20} />
                 </a>
                 <a
                   href="https://www.linkedin.com/company/gdgoncampus/"
                   aria-label="LinkedIn">
-                  <i className="fab fa-linkedin"></i>
+                  <FaLinkedin size={20} />
                 </a>
                 <a href="#" aria-label="GitHub">
-                  <i className="fab fa-github"></i>
+                  <FaGithub size={20} />
                 </a>
               </div>
             </div>
@@ -723,6 +640,7 @@ export default function GDGLandingPage() {
         </header>
 
         <main>
+          {/* ... Hero Section ... */}
           <section className="hero" id="home">
             <div className="hero-content">
               <h1 className="main-heading">
@@ -778,7 +696,6 @@ export default function GDGLandingPage() {
                   <div
                     className={`celebration-overlay ${quizState === 4 ? "active" : ""}`}>
                     <span className="trophy">🏆</span>
-                    {/* Generate 12 confetti pieces with random exit coordinates */}
                     {[...Array(12)].map((_, i) => (
                       <div
                         key={i}
@@ -802,6 +719,7 @@ export default function GDGLandingPage() {
             </div>
           </section>
 
+          {/* ... Timeline Section ... */}
           <section className="process-section-wrapper" ref={processRef}>
             <h2 style={{ fontSize: "2.5rem", marginBottom: "2rem" }}>
               How it Works
@@ -851,27 +769,8 @@ export default function GDGLandingPage() {
           </section>
         </main>
 
-        {/* {isModalOpen && (
-          <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
-            <div className="modal-content" onClick={e => e.stopPropagation()}>
-              <h2 style={{ textAlign: 'center' }}>Enter Room Code</h2>
-              <form onSubmit={handleJoinSubmit}>
-                <input 
-                  type="text" 
-                  placeholder="Code (e.g. 1234)" 
-                  value={roomCode}
-                  onChange={(e) => setRoomCode(e.target.value)}
-                  required 
-                />
-                <button type="submit" className="hero-btn" style={{ width: '100%' }}>Join Room</button>
-              </form>
-            </div>
-          </div>
-        )} */}
-
         <footer className="footer">
           <div className="footer-container">
-            {/* Section 1: Brand Logo & Campus Name */}
             <div className="footer-section footer-brand">
               <div className="footer-logo-container">
                 <img
@@ -888,21 +787,29 @@ export default function GDGLandingPage() {
               </div>
             </div>
 
-            {/* Section 2: Copyright & Email */}
             <div className="footer-section footer-center">
               <p className="copyright">© 2024 All Rights Reserved</p>
               <a href="mailto:contact@gdgskncoe.com" className="email-pill">
-                <i className="fas fa-envelope"></i> contact@gdgskncoe.com
+                <FaEnvelope /> contact@gdgskncoe.com
               </a>
             </div>
 
-            {/* Section 3: Social Icons */}
+            {/* 🟢 CHANGE 3: Used React Icons here too */}
             <div className="footer-section footer-socials-wrapper">
               <div className="social-links">
-                <p>
-                  GDG On Campus operates from Smt. Kashibai Navale College of
-                  Engineering, Pune, India.
-                </p>
+                <a
+                  href="https://www.instagram.com/gdg_skncoe?igsh=MWNrcmlha2NzejJmag=="
+                  aria-label="Instagram">
+                  <FaInstagram size={24} />
+                </a>
+                <a
+                  href="https://www.linkedin.com/company/gdgoncampus/"
+                  aria-label="LinkedIn">
+                  <FaLinkedin size={24} />
+                </a>
+                <a href="#" aria-label="GitHub">
+                  <FaGithub size={24} />
+                </a>
               </div>
             </div>
           </div>
