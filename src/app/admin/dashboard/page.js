@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { getSocket } from "@/lib/socket";
 import { useRouter } from "next/navigation";
 
@@ -15,13 +15,17 @@ export default function Dashboard() {
   const [sessions, setSessions] = useState([]);
   const [questions, setQuestions] = useState([]);
 
-  // 🟢 UPDATED: stats now includes 'users'
+  // Stats State
   const [stats, setStats] = useState({ sessions: 0, questions: 0, users: 0 });
+
+  // 🟢 Live Users State (For the Lobby Count)
   const [liveUsers, setLiveUsers] = useState(0);
 
+  // UI Views
   const [currentSessionCode, setCurrentSessionCode] = useState(null);
   const [managerView, setManagerView] = useState(false);
 
+  // Inputs
   const [newTitle, setNewTitle] = useState("");
   const [newCode, setNewCode] = useState("");
   const [qText, setQText] = useState("");
@@ -30,6 +34,7 @@ export default function Dashboard() {
     { text: "", isCorrect: false },
   ]);
 
+  // Modals
   const [previewQ, setPreviewQ] = useState(null);
   const [updateQ, setUpdateQ] = useState(null);
   const [updateText, setUpdateText] = useState("");
@@ -42,14 +47,20 @@ export default function Dashboard() {
     setPasscode(p);
 
     loadSessions(p);
-    loadGlobalStats(p); // 🟢 Fetch the user count
+    loadGlobalStats(p);
 
     const savedTheme = localStorage.getItem("theme") || "light";
     setTheme(savedTheme);
     document.documentElement.setAttribute("data-theme", savedTheme);
 
+    // 🟢 LISTEN FOR LIVE COUNT (Updates when users join/leave lobby)
     socket.on("session:update", (data) => {
-      setLiveUsers(data.count > 0 ? data.count : 0);
+      // Handle both object { count: 5 } and array [{},{}] formats
+      let count = 0;
+      if (data?.count !== undefined) count = data.count;
+      else if (Array.isArray(data)) count = data.length;
+
+      setLiveUsers(count);
     });
 
     return () => {
@@ -64,7 +75,13 @@ export default function Dashboard() {
     document.documentElement.setAttribute("data-theme", newTheme);
   };
 
-  // 🟢 NEW API CALL: Fetch Total Users
+  const openLeaderboard = (code) => {
+    if (!code) return alert("No Session Code found");
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    window.open(`${origin}/leaderboard?code=${code}`, "_blank");
+  };
+
+  // --- API ACTIONS ---
   const loadGlobalStats = async (token = passcode) => {
     try {
       const res = await fetch(`${API_URL}/admin/stats`, {
@@ -75,7 +92,7 @@ export default function Dashboard() {
         setStats((prev) => ({ ...prev, users: data.userCount }));
       }
     } catch (e) {
-      console.error("Stats Load Error", e);
+      console.error("Stats Error:", e);
     }
   };
 
@@ -83,16 +100,15 @@ export default function Dashboard() {
     try {
       const res = await fetch(`${API_URL}/sessions`);
       const data = await res.json();
-      const sessionList = data.data || [];
-      setSessions(sessionList);
-      setStats((prev) => ({ ...prev, sessions: sessionList.length }));
+      setSessions(data.data || []);
+      setStats((prev) => ({ ...prev, sessions: (data.data || []).length }));
     } catch (e) {
-      console.error("Load Error", e);
+      console.error(e);
     }
   };
 
   const createSession = async () => {
-    if (!newTitle || !newCode) return alert("Please fill in both fields.");
+    if (!newTitle || !newCode) return alert("Fill all fields");
     try {
       await fetch(`${API_URL}/sessions`, {
         method: "POST",
@@ -114,10 +130,10 @@ export default function Dashboard() {
   };
 
   const startSession = async (id, code) => {
-    if (!confirm(`Start Session ${code}? Players can join now.`)) return;
-    window.open(`/leaderboard?code=${code}`, "_blank");
+    if (!confirm(`Start Session ${code}?`)) return;
+    openLeaderboard(code);
     try {
-      const res = await fetch(`${API_URL}/sessions/start`, {
+      await fetch(`${API_URL}/sessions/start`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -125,16 +141,17 @@ export default function Dashboard() {
         },
         body: JSON.stringify({ sessionCode: code }),
       });
-      const data = await res.json();
-      if (!data.success) alert("Failed to start: " + data.message);
       loadSessions();
     } catch (e) {
-      alert("Error starting session");
+      alert("Error starting");
     }
   };
 
   const stopSession = async (id) => {
-    if (!confirm("Stop Session?")) return;
+    if (!confirm("Stop Session? Users will be kicked to home.")) return;
+
+    // This updates DB to COMPLETED.
+    // Ensure your Backend Controller sends 'game:force_stop' when status becomes COMPLETED.
     await fetch(`${API_URL}/sessions/${id}/status`, {
       method: "PUT",
       headers: {
@@ -143,32 +160,33 @@ export default function Dashboard() {
       },
       body: JSON.stringify({ status: "COMPLETED" }),
     });
+
     loadSessions();
   };
 
   const deleteSession = async (code) => {
-    if (!confirm("PERMANENTLY DELETE Session? This cannot be undone.")) return;
+    if (!confirm("Delete?")) return;
     await fetch(`${API_URL}/sessions/code/${code}/permanent`, {
       method: "DELETE",
       headers: { "admin-passcode": passcode },
     });
     if (currentSessionCode === code) closeManager();
     loadSessions();
-    loadGlobalStats(); // Refresh stats
+    loadGlobalStats();
   };
 
   const resetSession = async (id) => {
-    if (!confirm("Reset Session Data? This deletes all user scores.")) return;
+    if (!confirm("Reset Data?")) return;
     await fetch(`${API_URL}/sessions/${id}/data`, {
       method: "DELETE",
       headers: { "admin-passcode": passcode },
     });
-    alert("Session data cleared.");
+    alert("Data cleared.");
     loadSessions();
-    loadGlobalStats(); // Refresh stats
+    loadGlobalStats();
   };
 
-  // --- API ACTIONS: QUESTIONS ---
+  // --- MANAGER LOGIC ---
   const openQManager = (code) => {
     setCurrentSessionCode(code);
     setManagerView(true);
@@ -178,7 +196,9 @@ export default function Dashboard() {
       { text: "", isCorrect: false },
       { text: "", isCorrect: false },
     ]);
-    socket.emit("join:session", code); // Sync live count
+
+    // 🟢 JOIN SOCKET ROOM: Critical to receive live counts
+    socket.emit("join:session", code);
   };
 
   const closeManager = () => {
@@ -239,7 +259,7 @@ export default function Dashboard() {
   };
 
   const deleteQuestion = async (id) => {
-    if (!confirm("Delete this question?")) return;
+    if (!confirm("Delete?")) return;
     await fetch(`${API_URL}/questions/${id}`, {
       method: "DELETE",
       headers: { "admin-passcode": passcode },
@@ -280,7 +300,6 @@ export default function Dashboard() {
 
   return (
     <div className="layout">
-      {/* SIDEBAR */}
       <aside className="sidebar">
         <div className="logo">
           <div className="logo-icon">🛠</div>
@@ -347,6 +366,12 @@ export default function Dashboard() {
                   style={{ gridColumn: "span 2" }}>
                   Manage Questions
                 </button>
+                <button
+                  className="btn-purple"
+                  onClick={() => openLeaderboard(s.sessionCode)}
+                  style={{ gridColumn: "span 2", background: "#7c3aed" }}>
+                  🏆 Open Leaderboard
+                </button>
                 {s.status === "ACTIVE" ? (
                   <button
                     className="btn-yellow"
@@ -361,15 +386,16 @@ export default function Dashboard() {
                   </button>
                 )}
                 <button
-                  className="btn-purple"
+                  className="btn-outline"
                   onClick={() => resetSession(s._id)}
                   title="Reset">
                   ♻️
                 </button>
                 <button
                   className="btn-red"
-                  onClick={() => deleteSession(s.sessionCode)}>
-                  Delete
+                  onClick={() => deleteSession(s.sessionCode)}
+                  style={{ gridColumn: "span 2" }}>
+                  Delete Session
                 </button>
               </div>
             </div>
@@ -377,7 +403,6 @@ export default function Dashboard() {
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
       <main className="main-content">
         <div className="top-navbar">
           <div className="page-title">Dashboard Overview</div>
@@ -386,10 +411,7 @@ export default function Dashboard() {
               className="leaderboard-link"
               onClick={() =>
                 currentSessionCode
-                  ? window.open(
-                      `/leaderboard?code=${currentSessionCode}`,
-                      "_blank",
-                    )
+                  ? openLeaderboard(currentSessionCode)
                   : alert("Select a session")
               }>
               <span className="leaderboard-icon">🏆</span>
@@ -401,14 +423,30 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 🟢 STATS GRID - REPLACED Total Sessions with Total Participants */}
+        {/* 🟢 STATS GRID - INTELLIGENT SWITCHING */}
         <div className="stats-grid">
+          {/* Card 1: Show LIVE Users if Managing, else DB Total */}
           <div className="stat-card">
-            <div className="stat-icon">👥</div>
-            {/* Displaying Real Database User Count */}
-            <div className="stat-value">{stats.users}</div>
-            <div className="stat-label">Total Participants</div>
+            <div
+              className="stat-icon"
+              style={{
+                animation: currentSessionCode ? "pulse 2s infinite" : "none",
+              }}>
+              {currentSessionCode ? "🔴" : "👥"}
+            </div>
+
+            <div className="stat-value">
+              {/* If Managing: Show Live Users. If Not: Show DB Users */}
+              {currentSessionCode ? liveUsers : stats.users}
+            </div>
+
+            <div className="stat-label">
+              {currentSessionCode
+                ? "Live Users (Lobby)"
+                : "Total Database Users"}
+            </div>
           </div>
+
           <div className="stat-card">
             <div className="stat-icon">✓</div>
             <div className="stat-value">{stats.questions}</div>
@@ -421,7 +459,7 @@ export default function Dashboard() {
             <div className="placeholder-content">
               <div className="placeholder-icon">📋</div>
               <div className="placeholder-text">
-                Select a session to manage questions
+                Select a session to see LIVE stats & manage questions
               </div>
             </div>
           </div>
@@ -432,6 +470,7 @@ export default function Dashboard() {
                 Managing:{" "}
                 <span className="code-badge">{currentSessionCode}</span>
               </h2>
+              {/* Badge for visual confirmation */}
               <div className="live-badge">🔴 {liveUsers} Live</div>
               <button
                 className="btn-grey"
