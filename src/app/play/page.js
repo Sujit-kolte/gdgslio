@@ -150,11 +150,24 @@ export default function GamePlay() {
       const pId = sessionStorage.getItem("PARTICIPANT_ID");
       const res = await fetch(`${API_URL}/participants/history/${pId}`);
       const json = await res.json();
+
       if (json.success) {
-        const correct = json.data.filter((h) => h.status === "CORRECT").length;
-        const incorrect = json.data.filter((h) => h.status === "WRONG").length;
-        const timeout =
-          json.data.filter((h) => h.status === "TIMEOUT").length || 0;
+        // 🟢 FIX START: Deduplicate by questionId
+        const uniqueMap = new Map();
+        json.data.forEach((item) => {
+          // Keep the first entry found for each questionId
+          if (!uniqueMap.has(item.questionId)) {
+            uniqueMap.set(item.questionId, item);
+          }
+        });
+        const cleanData = Array.from(uniqueMap.values());
+        // 🟢 FIX END
+
+        // Calculate stats using cleanData
+        const correct = cleanData.filter((h) => h.status === "CORRECT").length;
+        const incorrect = cleanData.filter((h) => h.status === "WRONG").length;
+        const timeout = cleanData.filter((h) => h.status === "TIMEOUT").length;
+
         setStats({ correct, incorrect, timeout });
       }
     } catch (e) {
